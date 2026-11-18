@@ -238,8 +238,28 @@ struct InlineParserTests {
 
     @Test func urlIsEverythingInTheParentheses() {
         #expect(Parsed("[a](тест)").strings(.url) == ["тест"])
-        #expect(Parsed("[a](b c)").strings(.url) == ["b c"])
         #expect(Parsed("[a](example.com)").strings(.url) == ["example.com"])
+    }
+
+    @Test func whitespaceInTheParenthesesMakesText() {
+        #expect(Parsed("[x](a b)").spans == [])
+        #expect(Parsed("[x](a\tb)").spans == [])
+        #expect(Parsed("[x]( a)").spans == [])
+        #expect(Parsed("[x](a )").spans == [])
+    }
+
+    @Test func textOfAFailedLinkIsParsed() {
+        #expect(Parsed("[**a**](b c)").pairs() == [
+            Pair("**a**", .strong), Pair("**", .inlineMarker), Pair("**", .inlineMarker),
+        ])
+        #expect(Parsed("[https://a](b c)").pairs() == [Pair("https://a", .url)])
+        #expect(Parsed("[x](https://a b)").pairs() == [Pair("https://a", .url)])
+    }
+
+    @Test func aLinkAfterAFailedOneIsParsed() {
+        let p = Parsed("[x](a b) [y](c)")
+        #expect(p.strings(.link) == ["[y](c)"])
+        #expect(p.strings(.url) == ["c"])
     }
 
     @Test func balancedParenthesesStayInTheURL() {

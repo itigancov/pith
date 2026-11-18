@@ -123,17 +123,44 @@ public final class EditorTextView: NSTextView {
         _ = run(TaskCommands.toggle)
     }
 
-    /// A single plain click on a task's checkbox toggles the task and leaves the selection; any other click is standard.
+    /// A single plain click on a task's checkbox toggles the task and leaves the selection.
+    /// A single plain press on a url opens it, or selects it if long; one that moves is a standard drag.
+    /// Any other click is standard.
     public override func mouseDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
-        if event.clickCount == 1, modifiers.isEmpty, !hasMarkedText(),
-           let index = checkboxCharacter(at: convert(event.locationInWindow, from: nil)),
-           toggleTask(atCharacter: index) {
-            // The standard click would have focused the editor.
-            window?.makeFirstResponder(self)
-            return
+        if event.clickCount == 1, modifiers.isEmpty, !hasMarkedText() {
+            let point = convert(event.locationInWindow, from: nil)
+            if let index = checkboxCharacter(at: point), toggleTask(atCharacter: index) {
+                // The standard click would have focused the editor.
+                window?.makeFirstResponder(self)
+                return
+            }
+            if let index = urlCharacter(at: point) {
+                trackURLPress(event, atCharacter: index)
+                return
+            }
         }
         super.mouseDown(with: event)
+    }
+
+    /// Follows the press that `down` starts on a url until the button goes up, or hands it to the standard drag once it moves.
+    private func trackURLPress(_ down: NSEvent, atCharacter index: Int) {
+        guard let window else { return super.mouseDown(with: down) }
+        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let distance = hypot(event.locationInWindow.x - down.locationInWindow.x, event.locationInWindow.y - down.locationInWindow.y)
+            let gesture = Links.gesture(duration: event.timestamp - down.timestamp, distance: distance)
+            if gesture == .drag {
+                // The standard tracking starts from the press and sees this event too.
+                window.postEvent(event, atStart: true)
+                super.mouseDown(with: down)
+                return
+            }
+            if event.type == .leftMouseUp {
+                window.makeFirstResponder(self)
+                _ = follow(gesture, atCharacter: index)
+                return
+            }
+        }
     }
 
     /// The first character of the task checkbox whose glyphs are under `point` (view coordinates), if any.
@@ -158,6 +185,61 @@ public final class EditorTextView: NSTextView {
         // The text keeps its length, so the selection before the click is still valid.
         edit.selection = selectedRange()
         apply(edit)
+        return true
+    }
+
+    // MARK: Links
+
+    /// Opens a url's address; the default hands it to the system.
+    public var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
+    // A pointing hand over every clickable url, with or without modifiers; the standard cursor elsewhere.
+
+    public override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        if isOverURL(event) {
+            NSCursor.pointingHand.set()
+        } else if NSCursor.current == NSCursor.pointingHand {
+            // Leaving a url: the hand is ours to take back.
+            NSCursor.iBeam.set()
+        }
+    }
+
+    public override func cursorUpdate(with event: NSEvent) {
+        if isOverURL(event) { NSCursor.pointingHand.set() } else { super.cursorUpdate(with: event) }
+    }
+
+    private func isOverURL(_ event: NSEvent) -> Bool {
+        urlCharacter(at: convert(event.locationInWindow, from: nil)) != nil
+    }
+
+    /// The first character of the clickable url whose glyphs are under `point` (view coordinates), if any.
+    func urlCharacter(at point: NSPoint) -> Int? {
+        guard let layout = textLayoutManager else { return nil }
+        let location = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        guard let paragraph = layout.paragraphRange(at: location) else { return nil }
+        let text = string
+        return BlockScanner.scan(text)
+            .filter { !$0.isCodeBlock && NSIntersectionRange($0.range, paragraph).length > 0 }
+            .flatMap { InlineParser.parse(text, in: $0.content) }
+            .filter { $0.kind == .url }
+            .first { layout.glyphs(of: $0.range, contain: location) && Links.url(in: text, at: $0.range.location) != nil }?
+            .range.location
+    }
+
+    /// Follows a press on the url that holds the character at `index`: `.open` opens it and leaves the selection,
+    /// `.select` selects the whole url. `false` when there is no clickable url there, input method text is being composed,
+    /// or the gesture is a drag.
+    func follow(_ gesture: Links.Gesture, atCharacter index: Int) -> Bool {
+        guard !hasMarkedText(), let (range, url) = Links.url(in: string, at: index) else { return false }
+        switch gesture {
+        case .open:
+            openURL(url)
+        case .select:
+            setSelectedRange(range)
+        case .drag:
+            return false
+        }
         return true
     }
 

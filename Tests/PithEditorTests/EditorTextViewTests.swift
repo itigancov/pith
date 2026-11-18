@@ -402,6 +402,103 @@ struct EditorTextViewTests {
         #expect(window.firstResponder === view)
     }
 
+    // MARK: Links
+
+    /// An editor whose opener records the addresses instead of opening them.
+    private func makeLinkEditor(_ text: String, selection: NSRange) -> (EditorTextView, NSWindow, () -> [String]) {
+        let (view, window) = makeEditor(text, selection: selection)
+        var opened: [String] = []
+        view.openURL = { opened.append($0.absoluteString) }
+        return (view, window, { opened })
+    }
+
+    @Test func openOnAURLOpensItAndKeepsTheTextAndSelection() {
+        let text = "a [t](x.com) https://y.com"
+        let (view, window, opened) = makeLinkEditor(text, selection: NSRange(location: 1, length: 2))
+        #expect(view.follow(.open, atCharacter: 7))
+        #expect(view.follow(.open, atCharacter: 13))
+        #expect(opened() == ["https://x.com", "https://y.com"])
+        #expect(view.string == text)
+        #expect(view.selectedRange() == NSRange(location: 1, length: 2))
+        _ = window
+    }
+
+    @Test func selectOnAURLSelectsExactlyIt() {
+        let (view, window, opened) = makeLinkEditor("a [t](x.com) b", selection: NSRange(location: 0, length: 0))
+        #expect(view.follow(.select, atCharacter: 10))
+        #expect(Marked(text: view.string, selection: view.selectedRange()) == Marked("a [t](«x.com») b"))
+        #expect(opened() == [])
+        _ = window
+    }
+
+    @Test func pressOutsideAClickableURLDoesNothing() {
+        let text = "a [t](x.com) [e]() `https://z.com` [w](http://[x)"
+        let (view, window, opened) = makeLinkEditor(text, selection: NSRange(location: 1, length: 0))
+        for index in [0, 3, 5, 11, 17, 25, 40] {
+            #expect(!view.follow(.open, atCharacter: index), "index \(index)")
+            #expect(!view.follow(.select, atCharacter: index), "index \(index)")
+        }
+        #expect(!view.follow(.drag, atCharacter: 7))
+        #expect(opened() == [])
+        #expect(view.string == text)
+        #expect(view.selectedRange() == NSRange(location: 1, length: 0))
+        _ = window
+    }
+
+    @Test func pressOnAURLDoesNothingWhileComposing() {
+        let (view, window, opened) = makeLinkEditor("[t](x.com) ", selection: NSRange(location: 11, length: 0))
+        view.setMarkedText("b", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(!view.follow(.open, atCharacter: 5))
+        #expect(!view.follow(.select, atCharacter: 5))
+        #expect(opened() == [])
+        #expect(view.hasMarkedText())
+        _ = window
+    }
+
+    /// Lays the view out and returns the middle of the glyph of the character at an index, in view coordinates.
+    private func glyphCenters(_ view: EditorTextView) throws -> (Int) throws -> NSPoint {
+        view.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+        let layout = try #require(view.textLayoutManager)
+        layout.ensureLayout(for: layout.documentRange)
+        return { index in
+            let start = try #require(layout.location(layout.documentRange.location, offsetBy: index))
+            let range = try #require(NSTextRange(location: start, end: layout.location(start, offsetBy: 1)))
+            var frame = CGRect.null
+            layout.enumerateTextSegments(in: range, type: .standard, options: []) { _, segment, _, _ in
+                frame = segment
+                return false
+            }
+            return NSPoint(x: frame.midX + view.textContainerOrigin.x, y: frame.midY + view.textContainerOrigin.y)
+        }
+    }
+
+    @Test func pointOnAURLsGlyphsHitsIt() throws {
+        let (view, window) = makeEditor("[t](x.com) https://y.com\n- [ ] [e]() [w](http://[x) `https://z.com`", selection: NSRange(location: 0, length: 0))
+        let center = try glyphCenters(view)
+        #expect(view.urlCharacter(at: try center(4)) == 4)
+        #expect(view.urlCharacter(at: try center(8)) == 4)
+        #expect(view.urlCharacter(at: try center(11)) == 11)
+        #expect(view.urlCharacter(at: try center(23)) == 11)
+        for index in [0, 1, 3, 9, 10, 25, 31, 33, 39, 43, 56] {
+            #expect(view.urlCharacter(at: try center(index)) == nil, "index \(index)")
+        }
+        // Past the end of the line.
+        #expect(view.urlCharacter(at: NSPoint(x: 290, y: try center(23).y)) == nil)
+        _ = window
+    }
+
+    @Test func aWrappedURLIsHitOnBothLines() throws {
+        let url = "https://example.com/" + String(repeating: "abcdefgh/", count: 8)
+        let (view, window) = makeEditor("see " + url, selection: NSRange(location: 0, length: 0))
+        let center = try glyphCenters(view)
+        let first = try center(4)
+        let last = try center(3 + url.utf16.count)
+        #expect(last.y > first.y)
+        #expect(view.urlCharacter(at: first) == 4)
+        #expect(view.urlCharacter(at: last) == 4)
+        _ = window
+    }
+
     // MARK: Formatting
 
     @Test(arguments: formattingCases)
