@@ -91,6 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let format = submenu(in: main, title: "Format")
         format.addItem(withTitle: "Indent", action: #selector(NSResponder.indent(_:)), keyEquivalent: "]")
         format.addItem(withTitle: "Outdent", action: #selector(EditorTextView.outdent(_:)), keyEquivalent: "[")
+        format.addItem(.separator())
+        format.addItem(withTitle: "Complete Task", action: #selector(EditorTextView.toggleTask(_:)), keyEquivalent: "k")
 
         let windowMenu = submenu(in: main, title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")

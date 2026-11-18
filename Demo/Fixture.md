@@ -27,7 +27,7 @@ Emoji 🎉 inside **bold 🚀** and `code 🧪`.
   2. Nested second
     - Bullet under a number
 2. Back on the top level
-3. [ ] Numbered task
+3. [ ] Numbered task (unsupported: not a task)
 
 - [ ] Open task
 - [x] Done task: secondary color, no strikethrough, even with **bold** and https://example.com
