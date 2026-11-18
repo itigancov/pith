@@ -5,19 +5,17 @@ public enum BlockScanner {
     public static func scan(_ text: String) -> [Block] {
         let units = Array(text.utf16)
         var blocks: [Block] = []
-        var indents: [Int] = []
         var lineStart = 0
         while true {
             let lineEnd = lineEnd(in: units, from: lineStart)
             let line = lineStart..<lineEnd
             var nextLineStart: Int? = lineEnd < units.count ? lineEnd + terminatorLength(in: units, at: lineEnd) : nil
             if let fence = openingFence(units, line: line) {
-                indents.removeAll()
                 let code = codeBlock(units, opening: fence, line: line, nextLineStart: nextLineStart)
                 blocks.append(code.block)
                 nextLineStart = code.nextLineStart
             } else {
-                blocks.append(lineBlock(units, line: line, indents: &indents))
+                blocks.append(lineBlock(units, line: line))
             }
             guard let next = nextLineStart else { break }
             lineStart = next
@@ -129,10 +127,8 @@ public enum BlockScanner {
         )
     }
 
-    /// `indents` is the stack of indent columns of the current series of list items.
-    private static func lineBlock(_ units: [UInt16], line: Range<Int>, indents: inout [Int]) -> Block {
-        if let item = listItem(units, line: line, indents: &indents) { return item }
-        indents.removeAll()
+    private static func lineBlock(_ units: [UInt16], line: Range<Int>) -> Block {
+        if let item = listItem(units, line: line) { return item }
         let range = NSRange(location: line.lowerBound, length: line.count)
         if units[line].allSatisfy(isBlank) {
             return Block(kind: .blank, range: range, content: range)
@@ -143,7 +139,7 @@ public enum BlockScanner {
     }
 
     /// `-`, `*`, `+` or 1–9 digits with `.`, followed by a space; any leading indent.
-    private static func listItem(_ units: [UInt16], line: Range<Int>, indents: inout [Int]) -> Block? {
+    private static func listItem(_ units: [UInt16], line: Range<Int>) -> Block? {
         var markerStart = line.lowerBound
         var indent = 0
         while markerStart < line.upperBound, units[markerStart] == space || units[markerStart] == tab {
@@ -152,7 +148,8 @@ public enum BlockScanner {
         }
         guard markerStart < line.upperBound else { return nil }
 
-        let level = nestingLevel(indent: indent, indents: &indents)
+        // Each item's own indent sets its level, whatever the items above it: two columns per level.
+        let level = indent / 2
         var kind: BlockKind
         var markerEnd = markerStart + 1
         let isBullet = units[markerStart] == dash || units[markerStart] == star || units[markerStart] == plus
@@ -195,14 +192,6 @@ public enum BlockScanner {
         case lowerX, upperX: return true
         default: return nil
         }
-    }
-
-    /// Level = number of ancestors with a smaller indent in the current series.
-    private static func nestingLevel(indent: Int, indents: inout [Int]) -> Int {
-        while let top = indents.last, top >= indent { indents.removeLast() }
-        let level = indents.count
-        indents.append(indent)
-        return level
     }
 
     /// 1–9 ASCII digits starting at `start`.

@@ -205,14 +205,15 @@ struct BlockScannerTests {
         #expect(levels("- a\n  - b\n    - c") == [0, 1, 2])
     }
 
-    @Test func indentOfFourSpacesNests() {
-        #expect(levels("- a\n    - b\n        - c") == [0, 1, 2])
+    @Test func levelIsTheIndentInPairsOfColumns() {
+        #expect(levels("- a\n    - b\n        - c") == [0, 2, 4])
+        #expect(levels("- a\n   - b\n     - c") == [0, 1, 2])
     }
 
-    @Test func mixedIndentsAreResolvedByTheStack() {
-        #expect(levels("- a\n    - b") == [0, 1])
+    @Test func levelDoesNotDependOnTheItemsAbove() {
+        #expect(levels("- a\n                          - b\n              - c") == [0, 13, 7])
         #expect(levels("- a\n  - b\n    - c\n  - d\n- e") == [0, 1, 2, 1, 0])
-        #expect(levels("- a\n    - b\n  - c") == [0, 1, 1])
+        #expect(levels("- a\n    - b\n  - c") == [0, 2, 1])
     }
 
     @Test func nestingMixesItemKinds() {
@@ -224,15 +225,9 @@ struct BlockScannerTests {
         ])
     }
 
-    @Test func deeperFirstItemStillStartsAtLevelZero() {
-        #expect(levels("    - a\n- b") == [0, 0])
-    }
-
-    @Test func nonItemLinesResetTheSeries() {
-        #expect(levels("- a\n  - b\n\n  - c") == [0, 1, -1, 0])
-        #expect(levels("- a\n  - b\ntext\n  - c") == [0, 1, -1, 0])
-        #expect(levels("- a\n  - b\n# h\n  - c") == [0, 1, -1, 0])
-        #expect(levels("- a\n  - b\n> q\n  - c") == [0, 1, -1, 0])
+    @Test func firstItemKeepsTheLevelOfItsIndent() {
+        #expect(levels("    - a\n- b") == [2, 0])
+        #expect(levels("text\n  - a") == [-1, 1])
     }
 
     @Test func indentedItemMarkerSpanSkipsTheIndent() {
@@ -356,10 +351,10 @@ struct BlockScannerTests {
         #expect(s.contents() == ["x\n``` y"])
     }
 
-    @Test func codeBlockEndsAListSeries() {
+    @Test func itemAfterACodeBlockKeepsItsLevel() {
         let s = Scanned("- a\n  - b\n```\nx\n```\n  - c")
         #expect(s.kinds() == [
-            .bullet(level: 0), .bullet(level: 1), .codeBlock(language: nil), .bullet(level: 0),
+            .bullet(level: 0), .bullet(level: 1), .codeBlock(language: nil), .bullet(level: 1),
         ])
     }
 
@@ -398,8 +393,9 @@ struct BlockScannerTests {
     }
 
     @Test func tabIndentCountsAsFourSpaces() {
-        #expect(levels("- a\n\t- b\n\t\t- c") == [0, 1, 2])
-        #expect(levels("- a\n    - b\n\t- c") == [0, 1, 1])
+        #expect(levels("- a\n\t- b\n\t\t- c") == [0, 2, 4])
+        #expect(levels("- a\n    - b\n\t- c") == [0, 2, 2])
+        #expect(levels("- a\n  \t- b") == [0, 3])
     }
 
     @Test func rangesAreUTF16() {
