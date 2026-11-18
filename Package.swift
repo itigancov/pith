@@ -9,6 +9,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "PithEditor"),
+        // Restyle timings in release: `make bench`.
+        .executableTarget(name: "PithBench", dependencies: ["PithEditor"]),
         .testTarget(name: "PithEditorTests", dependencies: ["PithEditor"]),
     ]
 )

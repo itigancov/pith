@@ -3,7 +3,7 @@ import Foundation
 public enum BlockScanner {
     /// Scans the whole Note line by line.
     public static func scan(_ text: String) -> [Block] {
-        let units = Array(text.utf16)
+        let units = utf16Units(of: text)
         var blocks: [Block] = []
         var lineStart = 0
         while true {
@@ -21,6 +21,17 @@ public enum BlockScanner {
             lineStart = next
         }
         return blocks
+    }
+
+    /// The text's UTF-16 units. The text of a storage is a bridged `NSString`: walking its `utf16` view
+    /// goes unit by unit through the bridge, while `getCharacters` copies them all at once.
+    private static func utf16Units(of text: String) -> [UInt16] {
+        let string = text as NSString
+        let length = string.length
+        return [UInt16](unsafeUninitializedCapacity: length) { buffer, count in
+            if let base = buffer.baseAddress { string.getCharacters(base, range: NSRange(location: 0, length: length)) }
+            count = length
+        }
     }
 
     private static func unit(_ c: Unicode.Scalar) -> UInt16 { UInt16(c.value) }

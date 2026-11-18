@@ -66,6 +66,33 @@ public final class EditorTextView: NSTextView {
         super.writeSelection(to: pboard, types: types.filter(Self.stringTypes.contains))
     }
 
+    // MARK: Input methods
+
+    // While input method text is composed, the Styler holds off; once the composition is committed or cancelled,
+    // it restyles everything the composition changed at once.
+
+    public override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        styler.beginComposition()
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        // Empty marked text cancels the composition.
+        endCompositionIfDone()
+    }
+
+    public override func unmarkText() {
+        super.unmarkText()
+        endCompositionIfDone()
+    }
+
+    public override func insertText(_ string: Any, replacementRange: NSRange) {
+        super.insertText(string, replacementRange: replacementRange)
+        endCompositionIfDone()
+    }
+
+    private func endCompositionIfDone() {
+        guard !hasMarkedText(), let textStorage else { return }
+        styler.endComposition(in: textStorage)
+    }
+
     // MARK: Block behavior
 
     /// Enter continues a list item or quote; ⇧Enter and Enter elsewhere insert a plain line break.
@@ -164,11 +191,12 @@ public final class EditorTextView: NSTextView {
     }
 
     /// The first character of the task checkbox whose glyphs are under `point` (view coordinates), if any.
+    /// `nil` while input method text is being composed.
     func checkboxCharacter(at point: NSPoint) -> Int? {
-        guard let layout = textLayoutManager else { return nil }
+        guard !hasMarkedText(), let layout = textLayoutManager else { return nil }
         let location = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
         guard let paragraph = layout.paragraphRange(at: location) else { return nil }
-        return BlockScanner.scan(string)
+        return styler.blocks
             .filter { NSIntersectionRange($0.range, paragraph).length > 0 }
             .compactMap(\.taskCheckbox)
             .first { layout.glyphs(of: $0, contain: location) }?
@@ -179,7 +207,7 @@ public final class EditorTextView: NSTextView {
     /// `false` when the character is not in a task's checkbox or input method text is being composed.
     func toggleTask(atCharacter index: Int) -> Bool {
         guard !hasMarkedText(),
-              let box = BlockScanner.scan(string).lazy.compactMap(\.taskCheckbox).first(where: { NSLocationInRange(index, $0) }),
+              let box = styler.blocks.lazy.compactMap(\.taskCheckbox).first(where: { NSLocationInRange(index, $0) }),
               var edit = TaskCommands.toggle(text: string, selection: NSRange(location: box.location, length: 0))
         else { return false }
         // The text keeps its length, so the selection before the click is still valid.
@@ -214,16 +242,18 @@ public final class EditorTextView: NSTextView {
     }
 
     /// The first character of the clickable url whose glyphs are under `point` (view coordinates), if any.
+    /// `nil` while input method text is being composed: the pointer stays standard.
     func urlCharacter(at point: NSPoint) -> Int? {
-        guard let layout = textLayoutManager else { return nil }
+        guard !hasMarkedText(), let layout = textLayoutManager else { return nil }
         let location = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
         guard let paragraph = layout.paragraphRange(at: location) else { return nil }
         let text = string
-        return BlockScanner.scan(text)
+        let blocks = styler.blocks
+        return blocks
             .filter { !$0.isCodeBlock && NSIntersectionRange($0.range, paragraph).length > 0 }
             .flatMap { InlineParser.parse(text, in: $0.content) }
             .filter { $0.kind == .url }
-            .first { layout.glyphs(of: $0.range, contain: location) && Links.url(in: text, at: $0.range.location) != nil }?
+            .first { layout.glyphs(of: $0.range, contain: location) && Links.url(in: text, at: $0.range.location, blocks: blocks) != nil }?
             .range.location
     }
 
@@ -231,7 +261,7 @@ public final class EditorTextView: NSTextView {
     /// `.select` selects the whole url. `false` when there is no clickable url there, input method text is being composed,
     /// or the gesture is a drag.
     func follow(_ gesture: Links.Gesture, atCharacter index: Int) -> Bool {
-        guard !hasMarkedText(), let (range, url) = Links.url(in: string, at: index) else { return false }
+        guard !hasMarkedText(), let (range, url) = Links.url(in: string, at: index, blocks: styler.blocks) else { return false }
         switch gesture {
         case .open:
             openURL(url)

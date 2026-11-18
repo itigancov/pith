@@ -499,6 +499,160 @@ struct EditorTextViewTests {
         _ = window
     }
 
+    // MARK: Blocks of the last scan
+
+    @Test func hitTestingFindsTargetsShiftedByAnEdit() throws {
+        let (view, window, opened) = makeLinkEditor("- [ ] a https://x.com", selection: NSRange(location: 0, length: 0))
+        view.insertText("line\n\n", replacementRange: NSRange(location: 0, length: 0))
+        #expect(view.string == "line\n\n- [ ] a https://x.com")
+        let center = try glyphCenters(view)
+        #expect(view.checkboxCharacter(at: try center(9)) == 8)
+        #expect(view.checkboxCharacter(at: try center(3)) == nil)
+        #expect(view.urlCharacter(at: try center(16)) == 14)
+        #expect(view.urlCharacter(at: try center(10)) == nil)
+        #expect(view.toggleTask(atCharacter: 9))
+        #expect(!view.toggleTask(atCharacter: 3))
+        #expect(view.string == "line\n\n- [x] a https://x.com")
+        #expect(view.follow(.open, atCharacter: 20))
+        #expect(!view.follow(.open, atCharacter: 2))
+        #expect(opened() == ["https://x.com"])
+        _ = window
+    }
+
+    @Test func nothingIsHitWhileComposing() throws {
+        let (view, window) = makeEditor("- [ ] a https://x.com ", selection: NSRange(location: 22, length: 0))
+        let center = try glyphCenters(view)
+        let checkbox = try center(3)
+        let url = try center(12)
+        compose(view, "か")
+        #expect(view.checkboxCharacter(at: checkbox) == nil)
+        #expect(view.urlCharacter(at: url) == nil)
+        commit(view, "か")
+        #expect(view.checkboxCharacter(at: checkbox) == 2)
+        #expect(view.urlCharacter(at: url) == 8)
+        _ = window
+    }
+
+    // MARK: Input methods
+
+    private func compose(_ view: EditorTextView, _ marked: String) {
+        let length = (marked as NSString).length
+        view.setMarkedText(marked, selectedRange: NSRange(location: length, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    private func commit(_ view: EditorTextView, _ text: String) {
+        view.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    private func font(_ view: EditorTextView, at index: Int) -> NSFont? {
+        view.textStorage?.attribute(.font, at: index, effectiveRange: nil) as? NSFont
+    }
+
+    private func isItalic(_ view: EditorTextView, at index: Int) -> Bool {
+        font(view, at: index)?.fontDescriptor.symbolicTraits.contains(.italic) == true
+    }
+
+    @Test func composingLeavesTheStylesAsTheyWereUntilCommit() {
+        let (view, window) = makeEditor("*a", selection: NSRange(location: 2, length: 0))
+        compose(view, "*")
+        #expect(view.hasMarkedText())
+        #expect(view.markedRange() == NSRange(location: 2, length: 1))
+        #expect(!isItalic(view, at: 1))
+        #expect(font(view, at: 2) == .systemFont(ofSize: Theme.textSize))
+        commit(view, "*")
+        #expect(!view.hasMarkedText())
+        #expect(isItalic(view, at: 1))
+        _ = window
+    }
+
+    @Test func markedTextInsideASpanHasTheBaseStyle() {
+        let (view, window) = makeEditor("**ab**", selection: NSRange(location: 3, length: 0))
+        compose(view, "か")
+        #expect(font(view, at: 3) == .systemFont(ofSize: Theme.textSize))
+        #expect(font(view, at: 2) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 4) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        _ = window
+    }
+
+    @Test func aSeriesOfCompositionChangesKeepsTheMarkedText() {
+        let (view, window) = makeEditor("**ab**", selection: NSRange(location: 3, length: 0))
+        for marked in ["k", "か", "かn", "かな"] {
+            compose(view, marked)
+            #expect(view.hasMarkedText(), "\(marked)")
+        }
+        #expect(view.string == "**aかなb**")
+        #expect(view.markedRange() == NSRange(location: 3, length: 2))
+        _ = window
+    }
+
+    @Test func committedTextInsideStrongIsBold() {
+        let (view, window) = makeEditor("**ab**", selection: NSRange(location: 3, length: 0))
+        compose(view, "か")
+        compose(view, "かんじ")
+        commit(view, "漢字")
+        #expect(view.string == "**a漢字b**")
+        #expect(!view.hasMarkedText())
+        #expect(font(view, at: 3) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 4) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        _ = window
+    }
+
+    @Test func unmarkingCommitsTheMarkedTextStyled() {
+        let (view, window) = makeEditor("*a", selection: NSRange(location: 2, length: 0))
+        compose(view, "*")
+        view.unmarkText()
+        #expect(view.string == "*a*")
+        #expect(!view.hasMarkedText())
+        #expect(isItalic(view, at: 1))
+        _ = window
+    }
+
+    @Test func cancellingLeavesTheNoteStyledAsBefore() {
+        let (view, window) = makeEditor("*a", selection: NSRange(location: 2, length: 0))
+        compose(view, "*")
+        compose(view, "")
+        #expect(view.string == "*a")
+        #expect(!view.hasMarkedText())
+        #expect(!isItalic(view, at: 1))
+        // The next edit is styled as usual.
+        view.insertText("*", replacementRange: view.selectedRange())
+        #expect(isItalic(view, at: 1))
+        _ = window
+    }
+
+    @Test func compositionThatShiftsTheBlocksBelowIsStyledOnCommit() {
+        let (view, window) = makeEditor("a\n**b**\n# c", selection: NSRange(location: 1, length: 0))
+        compose(view, "x")
+        compose(view, "xy")
+        commit(view, "Z")
+        #expect(view.string == "aZ\n**b**\n# c")
+        #expect(font(view, at: 5) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 11) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        _ = window
+    }
+
+    @Test func settingTheStringWhileComposingStylesIt() {
+        let (view, window) = makeEditor("a", selection: NSRange(location: 1, length: 0))
+        compose(view, "か")
+        view.string = "**b**"
+        #expect(font(view, at: 2) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        view.insertText("*c*", replacementRange: NSRange(location: 5, length: 0))
+        #expect(isItalic(view, at: 6))
+        _ = window
+    }
+
+    @Test(arguments: ["z", "ж"])
+    func cyrillicInputStylesLikeLatin(_ letter: String) {
+        let (view, window) = makeEditor("**ab** *c", selection: NSRange(location: 3, length: 0))
+        view.insertText(letter, replacementRange: view.selectedRange())
+        #expect(font(view, at: 3) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        view.setSelectedRange(NSRange(location: 10, length: 0))
+        view.insertText(letter + "*", replacementRange: view.selectedRange())
+        #expect(isItalic(view, at: 9))
+        #expect(isItalic(view, at: 10))
+        _ = window
+    }
+
     // MARK: Formatting
 
     @Test(arguments: formattingCases)
