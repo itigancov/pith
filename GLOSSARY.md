@@ -17,7 +17,7 @@ A line-level unit of a Note: paragraph, heading, list item, task, quote. A code 
 _Avoid_: Paragraph, section
 
 **Inline**:
-Markup inside a Block's paragraph: bold, italic, strikethrough, highlight, code, link. Never crosses a paragraph boundary.
+Markup inside a Block's paragraph: bold, italic, strikethrough, highlight, code, link, bare `http(s)://` URL. Never crosses a paragraph boundary.
 _Avoid_: Run, style, format
 
 **Span**:
