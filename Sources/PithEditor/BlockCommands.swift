@@ -34,14 +34,14 @@ public enum BlockCommands {
         return series.edit(adding: inserted, selectingAfter: split)
     }
 
-    /// Indent (Tab, ⌘]): nests the list items the selection touches, with their subtrees, one level deeper.
+    /// Indent (Tab, ⌘]): nests the list items the selection touches one level deeper; the items below stay.
     /// Each item's level is its own: an item may go any number of levels deeper than the one above it.
     /// `nil` when the selection touches no list item.
     public static func indent(text: String, selection: NSRange) -> TextEdit? {
         shift(text: text, selection: selection, by: 1)
     }
 
-    /// Outdent (⇧Tab, ⌘[): moves the list items the selection touches, with their subtrees, one level up.
+    /// Outdent (⇧Tab, ⌘[): moves the list items the selection touches one level up; the items below stay.
     /// `nil` when the selection touches no list item; no replacements when all of them are at level 0.
     public static func outdent(text: String, selection: NSRange) -> TextEdit? {
         shift(text: text, selection: selection, by: -1)
@@ -240,10 +240,8 @@ struct Series {
         var level: Int
         var marker: Item.Marker
         var hasCheckbox: Bool
-        /// Moved, inserted or removed by the Command itself, not along with a parent.
+        /// Moved, inserted or removed by the Command.
         var isTarget = false
-        /// Moved along with a parent that is a target.
-        var isMovedWithParent = false
         var isRemoved = false
         /// The whole prefix after the indent is rewritten.
         var isRetyped = false
@@ -309,18 +307,10 @@ struct Series {
         renumber()
     }
 
-    /// Moves the item and its subtree (the following items deeper than it) by `delta` levels,
-    /// unless that goes above level 0 or it already moved with its parent.
+    /// Moves the item alone by `delta` levels, unless that goes above level 0: levels of the items below are their own.
     mutating func shift(at position: Int, by delta: Int) {
-        guard !entries[position].isMovedWithParent else { return }
-        let level = entries[position].level
-        guard level + delta >= 0 else { return }
-        var end = position + 1
-        while end < entries.count, entries[end].level > level { end += 1 }
-        for index in position..<end {
-            entries[index].level += delta
-            if index > position { entries[index].isMovedWithParent = true }
-        }
+        guard entries[position].level + delta >= 0 else { return }
+        entries[position].level += delta
         entries[position].isTarget = true
         renumber()
     }
