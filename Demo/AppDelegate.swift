@@ -88,6 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
+        let format = submenu(in: main, title: "Format")
+        format.addItem(withTitle: "Indent", action: #selector(NSResponder.indent(_:)), keyEquivalent: "]")
+        format.addItem(withTitle: "Outdent", action: #selector(EditorTextView.outdent(_:)), keyEquivalent: "[")
+
         let windowMenu = submenu(in: main, title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

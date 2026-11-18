@@ -31,3 +31,7 @@ _Avoid_: Delimiter, syntax, sigil
 **Toggle**:
 A command that wraps text in a Marker or removes the wrapping in one action.
 _Avoid_: Format, wrap, switch
+
+**Command**:
+A pure edit of a Note, `(text, selection) -> TextEdit`, that the editor applies as one undo step.
+_Avoid_: Action, operation
