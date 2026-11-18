@@ -95,12 +95,7 @@ public enum BlockCommands {
 
     private static func shift(text: String, selection: NSRange, by delta: Int) -> TextEdit? {
         let note = ScannedNote(text)
-        let touched = note.blocks.indices.filter { index in
-            let line = note.blocks[index].range
-            return selection.length == 0
-                ? line.location <= selection.location && selection.location <= line.upperBound
-                : line.location < selection.upperBound && selection.location <= line.upperBound
-        }
+        let touched = note.blockIndices(touchedBy: selection)
         var seen = Set<Int>()
         var plans: [Series] = []
         for index in touched where !seen.contains(index) {
@@ -170,6 +165,16 @@ struct ScannedNote {
 
     func blockIndex(containing location: Int) -> Int? {
         blocks.firstIndex { $0.range.location <= location && location <= $0.range.upperBound }
+    }
+
+    /// The Blocks whose lines the selection touches; for a caret, the Block of its line.
+    func blockIndices(touchedBy selection: NSRange) -> [Int] {
+        blocks.indices.filter { index in
+            let line = blocks[index].range
+            return selection.length == 0
+                ? line.location <= selection.location && selection.location <= line.upperBound
+                : line.location < selection.upperBound && selection.location <= line.upperBound
+        }
     }
 
     /// Only spaces and tabs.

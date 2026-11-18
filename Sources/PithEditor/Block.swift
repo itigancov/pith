@@ -76,3 +76,10 @@ extension Block {
         )
     }
 }
+
+extension Block {
+    /// The `[ ]`, `[x]` or `[X]` of a task; `nil` for other Blocks.
+    var taskCheckbox: NSRange? {
+        markers.first { $0.kind == .taskCheckbox }?.range
+    }
+}

@@ -94,6 +94,51 @@ public final class EditorTextView: NSTextView {
         _ = run(BlockCommands.outdent)
     }
 
+    // MARK: Tasks
+
+    /// ⌘K toggles the tasks the selection touches; does nothing outside them.
+    @objc public func toggleTask(_ sender: Any?) {
+        _ = run(TaskCommands.toggle)
+    }
+
+    /// A single plain click on a task's checkbox toggles the task and leaves the selection; any other click is standard.
+    public override func mouseDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        if event.clickCount == 1, modifiers.isEmpty, !hasMarkedText(),
+           let index = checkboxCharacter(at: convert(event.locationInWindow, from: nil)),
+           toggleTask(atCharacter: index) {
+            // The standard click would have focused the editor.
+            window?.makeFirstResponder(self)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// The first character of the task checkbox whose glyphs are under `point` (view coordinates), if any.
+    func checkboxCharacter(at point: NSPoint) -> Int? {
+        guard let layout = textLayoutManager else { return nil }
+        let location = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        guard let paragraph = layout.paragraphRange(at: location) else { return nil }
+        return BlockScanner.scan(string)
+            .filter { NSIntersectionRange($0.range, paragraph).length > 0 }
+            .compactMap(\.taskCheckbox)
+            .first { layout.glyphs(of: $0, contain: location) }?
+            .location
+    }
+
+    /// Toggles the task whose checkbox holds the character at `index`, leaving the selection where it is.
+    /// `false` when the character is not in a task's checkbox or input method text is being composed.
+    func toggleTask(atCharacter index: Int) -> Bool {
+        guard !hasMarkedText(),
+              let box = BlockScanner.scan(string).lazy.compactMap(\.taskCheckbox).first(where: { NSLocationInRange(index, $0) }),
+              var edit = TaskCommands.toggle(text: string, selection: NSRange(location: box.location, length: 0))
+        else { return false }
+        // The text keeps its length, so the selection before the click is still valid.
+        edit.selection = selectedRange()
+        apply(edit)
+        return true
+    }
+
     /// Runs a Command on the text and applies its result; `false` when it declines or input method text is being composed.
     private func run(_ command: (String, NSRange) -> TextEdit?) -> Bool {
         guard !hasMarkedText(), let edit = command(string, selectedRange()) else { return false }
@@ -115,5 +160,30 @@ public final class EditorTextView: NSTextView {
         setSelectedRange(edit.selection)
         undoManager?.endUndoGrouping()
         breakUndoCoalescing()
+    }
+}
+
+private extension NSTextLayoutManager {
+    /// The text range (UTF-16) of the laid-out paragraph under `point`, in text container coordinates.
+    func paragraphRange(at point: CGPoint) -> NSRange? {
+        guard let fragment = textLayoutFragment(for: point) else { return nil }
+        let range = fragment.rangeInElement
+        return NSRange(
+            location: offset(from: documentRange.location, to: range.location),
+            length: offset(from: range.location, to: range.endLocation)
+        )
+    }
+
+    /// Whether the glyphs of the characters in `range` (UTF-16) cover `point`, in text container coordinates.
+    func glyphs(of range: NSRange, contain point: CGPoint) -> Bool {
+        guard let start = location(documentRange.location, offsetBy: range.location),
+              let end = location(start, offsetBy: range.length),
+              let textRange = NSTextRange(location: start, end: end) else { return false }
+        var contains = false
+        enumerateTextSegments(in: textRange, type: .standard, options: []) { _, frame, _, _ in
+            contains = frame.contains(point)
+            return !contains
+        }
+        return contains
     }
 }
