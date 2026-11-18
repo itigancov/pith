@@ -13,7 +13,7 @@ An ordered set of Notes that the user pages through. Out of scope for the protot
 _Avoid_: Notebook, list of notes
 
 **Block**:
-A line-level unit of a Note: paragraph, heading, list item, task, quote, code block.
+A line-level unit of a Note: paragraph, heading, list item, task, quote. A code block is the one multi-line exception.
 _Avoid_: Paragraph, section
 
 **Inline**:
