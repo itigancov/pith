@@ -2,6 +2,9 @@ import AppKit
 
 /// Plain-text Markdown editor view. Always runs on TextKit 2.
 public final class EditorTextView: NSTextView {
+    /// Restyles the text after every edit of the storage, however it is made.
+    public let styler = Styler()
+
     public convenience init() {
         self.init(usingTextLayoutManager: true)
         configure()
@@ -10,6 +13,11 @@ public final class EditorTextView: NSTextView {
     private func configure() {
         isRichText = false
         importsGraphics = false
+        if let textStorage {
+            assert(textStorage.delegate == nil, "the text storage already has a delegate")
+            styler.attach(to: textStorage)
+        }
+        typingAttributes = styler.theme.baseAttributes
 
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
@@ -36,6 +44,12 @@ public final class EditorTextView: NSTextView {
         assertionFailure("EditorTextView fell back to TextKit 1: something touched layoutManager")
     }
     #endif
+
+    /// Typed text always starts from the base style; the Styler restyles it within the same edit.
+    public override var typingAttributes: [NSAttributedString.Key: Any] {
+        get { super.typingAttributes }
+        set { super.typingAttributes = styler.theme.baseAttributes }
+    }
 
     // AppKit announces plain text under the legacy name, not the `.string` UTI.
     private static let stringTypes: [NSPasteboard.PasteboardType] = [

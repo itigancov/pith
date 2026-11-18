@@ -63,3 +63,16 @@ public struct Block: Sendable, Equatable {
         self.markers = markers
     }
 }
+
+extension Block {
+    /// The same Block moved by `delta` UTF-16 units, Markers included.
+    func shifted(by delta: Int) -> Block {
+        func move(_ range: NSRange) -> NSRange { NSRange(location: range.location + delta, length: range.length) }
+        return Block(
+            kind: kind,
+            range: move(range),
+            content: move(content),
+            markers: markers.map { Span(range: move($0.range), kind: $0.kind) }
+        )
+    }
+}

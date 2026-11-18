@@ -57,6 +57,53 @@ struct EditorTextViewTests {
         #expect(pasteboard.data(forType: .html) == nil)
     }
 
+    @Test func settingTheStringStylesIt() throws {
+        let view = EditorTextView()
+        view.string = "# a\n**b**"
+        let storage = try #require(view.textStorage)
+        #expect(storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont == .systemFont(ofSize: 14, weight: .bold))
+        #expect(storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont == .monospacedSystemFont(ofSize: 13, weight: .regular))
+        #expect(view.textLayoutManager != nil)
+    }
+
+    @Test func typingAttributesAreTheBaseOnes() {
+        let view = EditorTextView()
+        view.string = "# heading"
+        view.setSelectedRange(NSRange(location: 9, length: 0))
+        #expect(view.typingAttributes[.font] as? NSFont == .systemFont(ofSize: 14))
+        #expect(view.typingAttributes[.foregroundColor] as? NSColor == .labelColor)
+        #expect((view.typingAttributes[.paragraphStyle] as? NSParagraphStyle)?.lineHeightMultiple == 1.25)
+    }
+
+    @Test func typedTextIsStyled() throws {
+        let view = EditorTextView()
+        view.string = "a *b"
+        view.setSelectedRange(NSRange(location: 4, length: 0))
+        view.insertText("*", replacementRange: view.selectedRange())
+        let storage = try #require(view.textStorage)
+        #expect(storage.string == "a *b*")
+        let traits = (storage.attribute(.font, at: 3, effectiveRange: nil) as? NSFont)?.fontDescriptor.symbolicTraits
+        #expect(traits?.contains(.italic) == true)
+    }
+
+    @Test func undoRestoresTheTextAndItsStyle() throws {
+        let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let view = EditorTextView()
+        view.allowsUndo = true
+        window.contentView = view
+        view.string = "a *b"
+        view.setSelectedRange(NSRange(location: 4, length: 0))
+        view.insertText("*", replacementRange: view.selectedRange())
+        let undo = try #require(view.undoManager)
+        undo.undo()
+        let storage = try #require(view.textStorage)
+        #expect(storage.string == "a *b")
+        #expect(storage.attribute(.font, at: 3, effectiveRange: nil) as? NSFont == .systemFont(ofSize: 14))
+        undo.redo()
+        #expect(storage.string == "a *b*")
+        #expect(storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont == .monospacedSystemFont(ofSize: 13, weight: .regular))
+    }
+
     @Test func autoSubstitutionsAreOffAndSpellCheckingIsOn() {
         let view = EditorTextView()
         #expect(!view.isAutomaticQuoteSubstitutionEnabled)

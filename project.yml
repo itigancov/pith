@@ -14,7 +14,11 @@ targets:
   PithDemo:
     type: application
     platform: macOS
-    sources: [Demo]
+    sources:
+      - path: Demo
+        excludes: [Fixture.md]
+      - path: Demo/Fixture.md
+        buildPhase: resources
     dependencies:
       - package: PithEditor
     info:
