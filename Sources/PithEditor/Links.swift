@@ -5,9 +5,12 @@ public enum Links {
     /// The `url` Span that holds the character at `index`, with the address it opens.
     /// `nil` outside a url, in code, or when the text makes no `URL`.
     public static func url(in text: String, at index: Int) -> (range: NSRange, url: URL)? {
-        guard let block = BlockScanner.scan(text).first(where: { NSLocationInRange(index, $0.content) }),
-              !block.isCodeBlock
-        else { return nil }
+        url(in: text, at: index, blocks: BlockScanner.scan(text))
+    }
+
+    /// `url(in:at:)` over the Blocks of `text`, already scanned.
+    static func url(in text: String, at index: Int, blocks: [Block]) -> (range: NSRange, url: URL)? {
+        guard let block = blocks.first(where: { NSLocationInRange(index, $0.content) }), !block.isCodeBlock else { return nil }
         guard let span = InlineParser.parse(text, in: block.content)
             .first(where: { $0.kind == .url && NSLocationInRange(index, $0.range) }),
             let url = address((text as NSString).substring(with: span.range))

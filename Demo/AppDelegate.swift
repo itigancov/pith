@@ -4,6 +4,7 @@ import PithEditor
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
+    private var editor: EditorTextView?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
@@ -41,8 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(editor)
         self.window = window
+        self.editor = editor
 
         NSApp.activate(ignoringOtherApps: true)
+
+        // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
+        if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
 
         if let path = UserDefaults.standard.string(forKey: "PithSnapshot") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -119,12 +124,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         format.addItem(.separator())
         format.addItem(withTitle: "Complete Task", action: #selector(EditorTextView.toggleTask(_:)), keyEquivalent: "k")
 
+        let debug = submenu(in: main, title: "Debug")
+        debug.addItem(withTitle: "Generate 5k Lines", action: #selector(generateBigNote(_:)), keyEquivalent: "")
+
         let windowMenu = submenu(in: main, title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         NSApp.windowsMenu = windowMenu
 
         return main
+    }
+
+    /// Replaces the Note with a generated one of 5000 lines, the same as the bench's, and forgets the undo history.
+    @objc private func generateBigNote(_ sender: Any?) {
+        guard let editor else { return }
+        editor.string = NoteGenerator.note(lines: 5000, seed: 1)
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        editor.undoManager?.removeAllActions()
     }
 
     private func submenu(in menu: NSMenu, title: String) -> NSMenu {

@@ -1,12 +1,12 @@
 /// How a stretch of a Note's text looks, before the Theme turns it into attributes.
-public struct TextStyle: Sendable, Equatable {
-    public enum Color: Sendable, Equatable {
+public struct TextStyle: Sendable, Hashable {
+    public enum Color: Sendable, Hashable {
         case label
         case secondary
         case link
     }
 
-    public enum Background: Sendable, Equatable {
+    public enum Background: Sendable, Hashable {
         case highlight
         case code
     }

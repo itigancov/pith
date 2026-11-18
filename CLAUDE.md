@@ -6,7 +6,8 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 
 - `make test` — `swift test` (`PithEditor` package, Swift Testing)
 - `make build` — xcodegen + xcodebuild of the demo into `.build/xcode`
-- `make run` — build, then open `PithDemo.app`
+- `make run` — build, then open `PithDemo.app`; `CONFIG=Release` for both to check performance by hand
+- `make bench` — restyle timings on a generated 5k-line Note in release (`Sources/PithBench`); fails on a missed budget. `make test` asserts no timings
 
 ## Layout
 
