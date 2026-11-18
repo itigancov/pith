@@ -161,6 +161,12 @@ struct BlockCommandsTests {
         #expect(newline("1. a\n  - b\n  - |\n2. c") == Marked("1. a\n  - b\n2. |\n3. c"))
     }
 
+    @Test func emptyItemNestedManyLevelsDeepMovesToItsParentsLevel() {
+        #expect(newline("- a\n        - |") == Marked("- a\n- |"))
+        #expect(newline("- a\n  1. b\n          - |") == Marked("- a\n  1. b\n  2. |"))
+        #expect(newline("      - |") == Marked("    - |"))
+    }
+
     @Test func outdentedEmptyItemKeepsItsChildren() {
         #expect(newline("- a\n  - |\n    - b") == Marked("- a\n- |\n  - b"))
     }
@@ -198,14 +204,18 @@ struct BlockCommandsTests {
         #expect(outdent("- a\n  - b|\n    - c\n  - d") == Marked("- a\n- b|\n  - c\n  - d"))
     }
 
-    @Test func indentGoesAtMostOneLevelBelowThePreviousItem() {
-        #expect(indent("- a\n  - b|") == Marked("- a\n  - b|"))
-        #expect(indent("- a\n  - b\n    - c\n  - d|") == Marked("- a\n  - b\n    - c\n    - d|"))
+    @Test func indentHasNoLimitBelowThePreviousItem() {
+        #expect(indent("- a\n  - b|") == Marked("- a\n    - b|"))
+        #expect(indent("- a\n  - b\n            - c|") == Marked("- a\n  - b\n              - c|"))
     }
 
-    @Test func firstItemOfASeriesDoesNotIndent() {
-        #expect(indent("- a|\n- b") == Marked("- a|\n- b"))
-        #expect(indent("text\n- a|") == Marked("text\n- a|"))
+    @Test func firstItemIndentsToo() {
+        #expect(indent("- a|\n- b") == Marked("  - a|\n- b"))
+        #expect(indent("text\n- a|") == Marked("text\n  - a|"))
+    }
+
+    @Test func itemsDeeperThanTheirParentByManyLevelsMoveWithIt() {
+        #expect(outdent("  - a|\n          - b\n- c") == Marked("- a|\n        - b\n- c"))
     }
 
     @Test func outdentAtLevelZeroDoesNothing() {
@@ -214,8 +224,9 @@ struct BlockCommandsTests {
     }
 
     @Test func shiftedIndentIsTwoSpacesPerLevel() {
-        #expect(indent("- a\n    - b\n    - c|") == Marked("- a\n  - b\n    - c|"))
-        #expect(outdent("- a\n\t- b\n\t\t- c|") == Marked("- a\n  - b\n  - c|"))
+        #expect(indent("- a\n    - b\n    - c|") == Marked("- a\n    - b\n      - c|"))
+        #expect(outdent("- a\n\t- b\n\t\t- c|") == Marked("- a\n\t- b\n      - c|"))
+        #expect(indent("1. a\n   - b|") == Marked("1. a\n    - b|"))
     }
 
     @Test func markerStaysWhenShifted() {
@@ -224,7 +235,7 @@ struct BlockCommandsTests {
     }
 
     @Test func selectionShiftsEveryItemItTouchesAndNothingElse() {
-        #expect(indent("- a\n«- b\ntext\n# h\n> q\n- c\n- d»") == Marked("- a\n«  - b\ntext\n# h\n> q\n- c\n  - d»"))
+        #expect(indent("- a\n«- b\ntext\n# h\n> q\n- c\n- d»") == Marked("- a\n«  - b\ntext\n# h\n> q\n  - c\n  - d»"))
         #expect(outdent("- a\n  - «b\n  - c»\n  - d") == Marked("- a\n- «b\n- c»\n  - d"))
     }
 

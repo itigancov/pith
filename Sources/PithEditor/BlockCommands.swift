@@ -35,7 +35,8 @@ public enum BlockCommands {
     }
 
     /// Indent (Tab, ⌘]): nests the list items the selection touches, with their subtrees, one level deeper.
-    /// `nil` when the selection touches no list item; no replacements when none of them can be nested.
+    /// Each item's level is its own: an item may go any number of levels deeper than the one above it.
+    /// `nil` when the selection touches no list item.
     public static func indent(text: String, selection: NSRange) -> TextEdit? {
         shift(text: text, selection: selection, by: 1)
     }
@@ -258,8 +259,6 @@ struct Series {
 
     let note: ScannedNote
     private(set) var entries: [Entry]
-    /// Some level changed, so indents are rewritten as two spaces per level.
-    private var normalizesIndents = false
 
     init?(_ note: ScannedNote, containing index: Int) {
         guard note.item(at: index) != nil else { return nil }
@@ -297,26 +296,25 @@ struct Series {
         entries[position].isRemoved = true
     }
 
-    /// Outdents an empty item; it takes the marker of the previous item on its new level and keeps its own checkbox.
+    /// Moves an empty item up to its parent's level, or one level up without a parent.
+    /// It takes the parent's marker and keeps its own checkbox.
     mutating func outdentEmptyItem(at position: Int) {
-        shift(at: position, by: -1)
         let level = entries[position].level
-        guard let previous = entries[..<position].last(where: { $0.level <= level }), previous.level == level else { return }
-        entries[position].marker = previous.marker.number.map { .number($0 + 1) } ?? previous.marker
+        guard let parent = entries[..<position].last(where: { $0.level < level }) else {
+            return shift(at: position, by: -1)
+        }
+        shift(at: position, by: parent.level - level)
+        entries[position].marker = parent.marker.number.map { .number($0 + 1) } ?? parent.marker
         entries[position].isRetyped = true
         renumber()
     }
 
-    /// Moves the item and its subtree by `delta` levels, unless it cannot move or already moved with its parent.
+    /// Moves the item and its subtree (the following items deeper than it) by `delta` levels,
+    /// unless that goes above level 0 or it already moved with its parent.
     mutating func shift(at position: Int, by delta: Int) {
         guard !entries[position].isMovedWithParent else { return }
         let level = entries[position].level
-        if delta > 0 {
-            // Never deeper than one level below the previous item.
-            guard position > 0, level <= entries[position - 1].level else { return }
-        } else {
-            guard level > 0 else { return }
-        }
+        guard level + delta >= 0 else { return }
         var end = position + 1
         while end < entries.count, entries[end].level > level { end += 1 }
         for index in position..<end {
@@ -324,7 +322,6 @@ struct Series {
             if index > position { entries[index].isMovedWithParent = true }
         }
         entries[position].isTarget = true
-        normalizesIndents = true
         renumber()
     }
 
@@ -397,9 +394,9 @@ struct Series {
                 result.append(.init(range: line, string: ""))
                 continue
             }
-            if normalizesIndents {
-                let indent = String(repeating: " ", count: 2 * entry.level)
-                if note.text.substring(with: item.indent) != indent { result.append(.init(range: item.indent, string: indent)) }
+            // A moved line gets two spaces per level; the indent of the others stays as typed.
+            if entry.level != item.level {
+                result.append(.init(range: item.indent, string: String(repeating: " ", count: 2 * entry.level)))
             }
             if entry.isRetyped {
                 let prefix = NSRange(location: item.markerText.location, length: item.content.location - item.markerText.location)

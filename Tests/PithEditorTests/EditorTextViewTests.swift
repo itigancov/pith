@@ -211,9 +211,9 @@ struct EditorTextViewTests {
         _ = window
     }
 
-    @Test func tabOnAnItemThatCannotNestDoesNothing() {
+    @Test func backtabAtLevelZeroDoesNothing() {
         let (view, window) = makeEditor("- a", selection: NSRange(location: 3, length: 0))
-        view.insertTab(nil)
+        view.insertBacktab(nil)
         #expect(view.string == "- a")
         _ = window
     }
