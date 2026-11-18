@@ -1,7 +1,8 @@
 import Foundation
 
-/// Markup kind of a `Span` produced by the block scanner.
+/// Markup kind of a `Span` produced by the block scanner or the inline parser.
 public enum SpanKind: Sendable, Equatable {
+    // Block markup.
     case headingMarker
     case listMarker
     case taskCheckbox
@@ -9,6 +10,19 @@ public enum SpanKind: Sendable, Equatable {
     case fence
     case fenceLanguage
     case codeContent
+
+    // Inline elements: each covers its Markers too.
+    case strong
+    case emphasis
+    case strikethrough
+    case highlight
+    case code
+    case link
+    /// Parts of a link between its Markers; `url` also marks a bare URL.
+    case linkText
+    case url
+    /// Any Marker of an Inline: `**`, `` ` `` runs, `[`, `](`, `)`, an escaping `\`.
+    case inlineMarker
 }
 
 /// A range of a Note's text (UTF-16) together with its markup kind.
