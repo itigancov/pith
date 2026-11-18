@@ -55,6 +55,11 @@ private func isWhitespace(_ scalar: Unicode.Scalar?) -> Bool {
     scalar?.properties.isWhitespace ?? true
 }
 
+/// Whitespace is all in the BMP, so a surrogate is never whitespace.
+private func isWhitespaceUnit(_ u: UInt16) -> Bool {
+    Unicode.Scalar(u)?.properties.isWhitespace ?? false
+}
+
 /// Unicode punctuation as CommonMark defines it: the P and S general categories.
 private func isPunctuation(_ scalar: Unicode.Scalar?) -> Bool {
     switch scalar?.properties.generalCategory {
@@ -187,7 +192,7 @@ private struct Parser {
         }
     }
 
-    /// Makes a link if `]` closes an open `[` and is followed by `(` with a matching `)`.
+    /// Makes a link if `]` closes an open `[` and is followed by `(` with a matching `)` and no whitespace between them.
     /// Returns the index to continue from.
     private mutating func closeLink(at textEnd: Int) -> Int {
         guard let opener = brackets.popLast() else { return textEnd + 1 }
@@ -196,6 +201,8 @@ private struct Parser {
             return textEnd + 1
         }
         let urlEnd = closingParen[textEnd + 1]
+        // An address has no whitespace: with it, the brackets and parentheses are text, and parsing goes on inside them.
+        guard !units[urlStart..<urlEnd].contains(where: isWhitespaceUnit) else { return textEnd + 1 }
         // Emphasis inside the text pairs only there.
         processEmphasis(above: opener.bottom)
         emit(opener.start..<urlEnd + 1, .link)
@@ -219,8 +226,7 @@ private struct Parser {
         var end = schemeEnd
         var opened = 0
         var closed = 0
-        // Whitespace is all in the BMP, so surrogates never end the URL.
-        while end < units.count, !(Unicode.Scalar(units[end])?.properties.isWhitespace ?? false), codeEnd[end] < 0 {
+        while end < units.count, !isWhitespaceUnit(units[end]), codeEnd[end] < 0 {
             if units[end] == closeBracket, !brackets.isEmpty { break }
             if units[end] == openParen { opened += 1 }
             if units[end] == closeParen { closed += 1 }

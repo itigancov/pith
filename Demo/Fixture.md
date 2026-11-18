@@ -7,6 +7,8 @@ Plain paragraph text in SF Pro 14 with a line height multiple of 1.25. It is lon
 Inline: **bold**, __bold too__, *italic*, _italic too_, ***bold italic***, ~~struck through~~, ==highlighted==, `inline code`.
 Nesting: **bold with *italic* inside**, **a *b***, **bold `code`**, *italic `code`*, ==highlight with **bold**==, ~~struck **bold**~~.
 Links: [link text](https://example.com/path), [**bold** link](https://example.com), bare https://example.com/page?q=1 and http://example.org.
+More links: [no scheme](example.com), [mail](mailto:someone@example.com), [bare URL as text https://example.org](https://example.com), [space in url](not a link), [cyrillic](пример.рф/тест).
+A long link that wraps: https://example.com/a/very/long/path/that/keeps/going/and/going/until/it/wraps/onto/the/next/line/even/in/a/wide/window/so/both/of/its/lines/can/be/clicked/and/checked/by/hand
 Escapes: \*not italic\*, \_not italic\_, \`not code\`.
 Lone and unpaired Markers stay text: a * b * c, snake_case_name, 2 * 3 = 6, **unclosed, *also unclosed, ~~open.
 Emoji 🎉 inside **bold 🚀** and `code 🧪`.
