@@ -78,6 +78,10 @@ extension Block {
 }
 
 extension Block {
+    var isCodeBlock: Bool {
+        if case .codeBlock = kind { true } else { false }
+    }
+
     /// The `[ ]`, `[x]` or `[X]` of a task; `nil` for other Blocks.
     var taskCheckbox: NSRange? {
         markers.first { $0.kind == .taskCheckbox }?.range

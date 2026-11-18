@@ -94,6 +94,28 @@ public final class EditorTextView: NSTextView {
         _ = run(BlockCommands.outdent)
     }
 
+    // MARK: Formatting
+
+    // Inline Toggles; each does nothing in code. The names stay clear of NSTextView's own actions, such as `underline:`.
+
+    @objc public func toggleBold(_ sender: Any?) { _ = run(InlineCommands.toggle(.strong)) }
+    @objc public func toggleItalic(_ sender: Any?) { _ = run(InlineCommands.toggle(.emphasis)) }
+    @objc public func toggleHighlight(_ sender: Any?) { _ = run(InlineCommands.toggle(.highlight)) }
+    @objc public func toggleStrikethrough(_ sender: Any?) { _ = run(InlineCommands.toggle(.strikethrough)) }
+    @objc public func toggleCode(_ sender: Any?) { _ = run(InlineCommands.toggle(.code)) }
+    @objc public func toggleLink(_ sender: Any?) { _ = run(InlineCommands.toggleLink) }
+
+    // Block Toggles; each but the code block one does nothing in a code block.
+
+    @objc public func toggleHeading1(_ sender: Any?) { _ = run(BlockCommands.toggle(.heading(level: 1))) }
+    @objc public func toggleHeading2(_ sender: Any?) { _ = run(BlockCommands.toggle(.heading(level: 2))) }
+    @objc public func toggleHeading3(_ sender: Any?) { _ = run(BlockCommands.toggle(.heading(level: 3))) }
+    @objc public func toggleBulletList(_ sender: Any?) { _ = run(BlockCommands.toggle(.bullet)) }
+    @objc public func toggleOrderedList(_ sender: Any?) { _ = run(BlockCommands.toggle(.ordered)) }
+    @objc public func toggleTaskList(_ sender: Any?) { _ = run(BlockCommands.toggle(.task)) }
+    @objc public func toggleQuote(_ sender: Any?) { _ = run(BlockCommands.toggle(.quote)) }
+    @objc public func toggleCodeBlock(_ sender: Any?) { _ = run(BlockCommands.toggle(.codeBlock)) }
+
     // MARK: Tasks
 
     /// ⌘K toggles the tasks the selection touches; does nothing outside them.

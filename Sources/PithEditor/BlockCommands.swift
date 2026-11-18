@@ -320,6 +320,12 @@ struct Series {
         renumber()
     }
 
+    /// Renumbers the items at `positions` as items that moved where they are, together with their runs.
+    mutating func renumber(movedTo positions: [Int]) {
+        for position in positions { entries[position].isTarget = true }
+        renumber()
+    }
+
     /// Renumbers the runs of numbered items the change touched: the ones items came to and the ones they left.
     /// A run starts from the first number of the run its first item was in, or from 1 if that item moved there.
     private mutating func renumber() {

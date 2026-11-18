@@ -89,6 +89,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         let format = submenu(in: main, title: "Format")
+        let inline: [(String, Selector, String, NSEvent.ModifierFlags)] = [
+            ("Bold", #selector(EditorTextView.toggleBold(_:)), "b", []),
+            ("Italic", #selector(EditorTextView.toggleItalic(_:)), "i", []),
+            ("Highlight", #selector(EditorTextView.toggleHighlight(_:)), "u", [.shift]),
+            ("Strikethrough", #selector(EditorTextView.toggleStrikethrough(_:)), "u", [.option]),
+            ("Code", #selector(EditorTextView.toggleCode(_:)), "j", [.shift]),
+            ("Link", #selector(EditorTextView.toggleLink(_:)), "k", [.shift]),
+        ]
+        let blocks: [(String, Selector, String, NSEvent.ModifierFlags)] = [
+            ("Heading 1", #selector(EditorTextView.toggleHeading1(_:)), "1", [.control]),
+            ("Heading 2", #selector(EditorTextView.toggleHeading2(_:)), "2", [.control]),
+            ("Heading 3", #selector(EditorTextView.toggleHeading3(_:)), "3", [.control]),
+            ("Bulleted List", #selector(EditorTextView.toggleBulletList(_:)), "l", [.shift]),
+            ("Numbered List", #selector(EditorTextView.toggleOrderedList(_:)), "l", [.option]),
+            ("Task List", #selector(EditorTextView.toggleTaskList(_:)), "l", [.control]),
+            ("Quote", #selector(EditorTextView.toggleQuote(_:)), "'", []),
+            ("Code Block", #selector(EditorTextView.toggleCodeBlock(_:)), "j", [.option, .shift]),
+        ]
+        for group in [inline, blocks] {
+            for (title, action, key, modifiers) in group {
+                let item = format.addItem(withTitle: title, action: action, keyEquivalent: key)
+                item.keyEquivalentModifierMask = modifiers.union(.command)
+            }
+            format.addItem(.separator())
+        }
         format.addItem(withTitle: "Indent", action: #selector(NSResponder.indent(_:)), keyEquivalent: "]")
         format.addItem(withTitle: "Outdent", action: #selector(EditorTextView.outdent(_:)), keyEquivalent: "[")
         format.addItem(.separator())
