@@ -167,8 +167,8 @@ struct BlockCommandsTests {
         #expect(newline("      - |") == Marked("    - |"))
     }
 
-    @Test func outdentedEmptyItemKeepsItsChildren() {
-        #expect(newline("- a\n  - |\n    - b") == Marked("- a\n- |\n  - b"))
+    @Test func outdentedEmptyItemLeavesTheItemsBelowInPlace() {
+        #expect(newline("- a\n  - |\n    - b") == Marked("- a\n- |\n    - b"))
     }
 
     @Test func newlineOnAnEmptyItemLeavingTheListKeepsTheOtherNumbers() {
@@ -199,9 +199,10 @@ struct BlockCommandsTests {
         #expect(outdent("- a\n  |- b") == Marked("- a\n|- b"))
     }
 
-    @Test func childrenMoveWithTheirParent() {
-        #expect(indent("- a\n- b|\n  - c\n    - d\n- e") == Marked("- a\n  - b|\n    - c\n      - d\n- e"))
-        #expect(outdent("- a\n  - b|\n    - c\n  - d") == Marked("- a\n- b|\n  - c\n  - d"))
+    @Test func itemsBelowStayWhenTheItemAboveMoves() {
+        #expect(indent("- a\n- b|\n  - c\n    - d\n- e") == Marked("- a\n  - b|\n  - c\n    - d\n- e"))
+        #expect(outdent("- a\n  - b|\n    - c\n  - d") == Marked("- a\n- b|\n    - c\n  - d"))
+        #expect(outdent("  - a|\n          - b\n- c") == Marked("- a|\n          - b\n- c"))
     }
 
     @Test func indentHasNoLimitBelowThePreviousItem() {
@@ -212,10 +213,6 @@ struct BlockCommandsTests {
     @Test func firstItemIndentsToo() {
         #expect(indent("- a|\n- b") == Marked("  - a|\n- b"))
         #expect(indent("text\n- a|") == Marked("text\n  - a|"))
-    }
-
-    @Test func itemsDeeperThanTheirParentByManyLevelsMoveWithIt() {
-        #expect(outdent("  - a|\n          - b\n- c") == Marked("- a|\n        - b\n- c"))
     }
 
     @Test func outdentAtLevelZeroDoesNothing() {
@@ -300,7 +297,7 @@ struct BlockCommandsTests {
     }
 
     @Test func untouchedListsKeepTheirNumbers() {
-        #expect(indent("1. a\n1. b\n- c\n- d|\n  1. x\n  1. y") == Marked("1. a\n1. b\n- c\n  - d|\n    1. x\n    1. y"))
+        #expect(indent("1. a\n1. b\n- c\n- d|\n  1. x\n  1. y") == Marked("1. a\n1. b\n- c\n  - d|\n  1. x\n  1. y"))
     }
 
     @Test func shiftKeepsCRLF() {
