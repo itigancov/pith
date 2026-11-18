@@ -312,6 +312,12 @@ struct BlockScannerTests {
         #expect(s.markers() == ["```", "a\n# b"])
     }
 
+    @Test func unclosedCodeBlockOwnsTheTrailingEmptyLine() {
+        let s = Scanned("```\nx\n")
+        #expect(s.kinds() == [.codeBlock(language: nil)])
+        #expect(s.ranges() == ["```\nx\n"])
+    }
+
     @Test func unclosedBareFence() {
         let s = Scanned("```")
         #expect(s.kinds() == [.codeBlock(language: nil)])

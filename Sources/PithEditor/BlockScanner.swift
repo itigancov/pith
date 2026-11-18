@@ -134,7 +134,7 @@ public enum BlockScanner {
         if let item = listItem(units, line: line, indents: &indents) { return item }
         indents.removeAll()
         let range = NSRange(location: line.lowerBound, length: line.count)
-        if units[line].allSatisfy({ $0 == space || $0 == tab }) {
+        if units[line].allSatisfy(isBlank) {
             return Block(kind: .blank, range: range, content: range)
         }
         if let heading = heading(units, line: line) { return heading }
