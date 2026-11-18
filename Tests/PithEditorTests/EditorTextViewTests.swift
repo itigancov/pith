@@ -2,6 +2,32 @@ import AppKit
 import Testing
 @testable import PithEditor
 
+struct FormattingCase: Sendable, CustomTestStringConvertible {
+    let name: String
+    let before: String
+    let after: String
+    let perform: @MainActor @Sendable (EditorTextView) -> Void
+
+    var testDescription: String { name }
+}
+
+private let formattingCases: [FormattingCase] = [
+    .init(name: "toggleBold", before: "a «b» c", after: "a **«b»** c") { $0.toggleBold(nil) },
+    .init(name: "toggleItalic", before: "a «b» c", after: "a *«b»* c") { $0.toggleItalic(nil) },
+    .init(name: "toggleHighlight", before: "a «b» c", after: "a ==«b»== c") { $0.toggleHighlight(nil) },
+    .init(name: "toggleStrikethrough", before: "a «b» c", after: "a ~~«b»~~ c") { $0.toggleStrikethrough(nil) },
+    .init(name: "toggleCode", before: "a «b» c", after: "a `«b»` c") { $0.toggleCode(nil) },
+    .init(name: "toggleLink", before: "a «b» c", after: "a [b](|) c") { $0.toggleLink(nil) },
+    .init(name: "toggleHeading1", before: "a|", after: "# a|") { $0.toggleHeading1(nil) },
+    .init(name: "toggleHeading2", before: "a|", after: "## a|") { $0.toggleHeading2(nil) },
+    .init(name: "toggleHeading3", before: "a|", after: "### a|") { $0.toggleHeading3(nil) },
+    .init(name: "toggleBulletList", before: "«a\nb»", after: "- «a\n- b»") { $0.toggleBulletList(nil) },
+    .init(name: "toggleOrderedList", before: "«a\nb»", after: "1. «a\n2. b»") { $0.toggleOrderedList(nil) },
+    .init(name: "toggleTaskList", before: "«a\nb»", after: "- [ ] «a\n- [ ] b»") { $0.toggleTaskList(nil) },
+    .init(name: "toggleQuote", before: "«a\nb»", after: "> «a\n> b»") { $0.toggleQuote(nil) },
+    .init(name: "toggleCodeBlock", before: "«a\nb»", after: "```|\na\nb\n```") { $0.toggleCodeBlock(nil) },
+]
+
 @MainActor
 struct EditorTextViewTests {
     private func makePasteboard() -> NSPasteboard {
@@ -374,5 +400,59 @@ struct EditorTextViewTests {
         #expect(view.string == "- [x] a")
         #expect(view.selectedRange() == NSRange(location: 7, length: 0))
         #expect(window.firstResponder === view)
+    }
+
+    // MARK: Formatting
+
+    @Test(arguments: formattingCases)
+    func formattingActionAppliesItsCommandAsOneUndoStep(_ formatting: FormattingCase) throws {
+        let before = Marked(formatting.before)
+        let after = Marked(formatting.after)
+        let (view, window) = makeEditor(before.text, selection: before.selection)
+        let undo = try #require(view.undoManager)
+        formatting.perform(view)
+        endEvent(undo)
+        #expect(Marked(text: view.string, selection: view.selectedRange()) == after)
+        undo.undo()
+        #expect(view.string == before.text)
+        undo.redo()
+        #expect(view.string == after.text)
+        _ = window
+    }
+
+    @Test func formattingIsNotCoalescedWithTyping() throws {
+        let (view, window) = makeEditor("a", selection: NSRange(location: 1, length: 0))
+        let undo = try #require(view.undoManager)
+        view.insertText("b", replacementRange: view.selectedRange())
+        endEvent(undo)
+        view.toggleBold(nil)
+        endEvent(undo)
+        view.insertText("c", replacementRange: view.selectedRange())
+        endEvent(undo)
+        #expect(view.string == "**abc**")
+        undo.undo()
+        #expect(view.string == "**ab**")
+        undo.undo()
+        #expect(view.string == "ab")
+        _ = window
+    }
+
+    @Test func formattingDoesNothingWhileComposing() {
+        let (view, window) = makeEditor("a ", selection: NSRange(location: 2, length: 0))
+        view.setMarkedText("b", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        view.toggleBold(nil)
+        view.toggleBulletList(nil)
+        #expect(view.string == "a b")
+        #expect(view.hasMarkedText())
+        _ = window
+    }
+
+    @Test func formattingRestylesTheResult() throws {
+        let (view, window) = makeEditor("a b", selection: NSRange(location: 2, length: 1))
+        view.toggleBold(nil)
+        let storage = try #require(view.textStorage)
+        let traits = (storage.attribute(.font, at: 4, effectiveRange: nil) as? NSFont)?.fontDescriptor.symbolicTraits
+        #expect(traits?.contains(.bold) == true)
+        _ = window
     }
 }

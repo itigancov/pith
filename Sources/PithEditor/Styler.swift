@@ -68,7 +68,7 @@ public final class Styler: NSObject, NSTextStorageDelegate {
         let whole = NSRange(location: block.range.location, length: end - block.range.location)
         storage.setAttributes(theme.baseAttributes, range: whole)
 
-        let isCode = if case .codeBlock = block.kind { true } else { false }
+        let isCode = block.isCodeBlock
         // A code block's body is not parsed for Inline.
         var spans = block.markers + (isCode ? [] : InlineParser.parse(text, in: block.content))
         spans.sort { $0.range.location < $1.range.location || ($0.range.location == $1.range.location && $0.range.length > $1.range.length) }
