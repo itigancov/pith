@@ -65,4 +65,55 @@ public final class EditorTextView: NSTextView {
     public override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
         super.writeSelection(to: pboard, types: types.filter(Self.stringTypes.contains))
     }
+
+    // MARK: Block behavior
+
+    /// Enter continues a list item or quote; ⇧Enter and Enter elsewhere insert a plain line break.
+    public override func insertNewline(_ sender: Any?) {
+        let isShifted = NSApp?.currentEvent.map { $0.type == .keyDown && $0.modifierFlags.contains(.shift) } ?? false
+        if isShifted || !run(BlockCommands.newline) { super.insertNewline(sender) }
+    }
+
+    /// Tab nests a list item; outside list items it inserts a tab.
+    public override func insertTab(_ sender: Any?) {
+        if !run(BlockCommands.indent) { super.insertTab(sender) }
+    }
+
+    /// ⇧Tab unnests a list item.
+    public override func insertBacktab(_ sender: Any?) {
+        if !run(BlockCommands.outdent) { super.insertBacktab(sender) }
+    }
+
+    /// ⌘] nests the selected list items; does nothing outside them.
+    public override func indent(_ sender: Any?) {
+        _ = run(BlockCommands.indent)
+    }
+
+    /// ⌘[ unnests the selected list items; does nothing outside them.
+    @objc public func outdent(_ sender: Any?) {
+        _ = run(BlockCommands.outdent)
+    }
+
+    /// Runs a Command on the text and applies its result; `false` when it declines or input method text is being composed.
+    private func run(_ command: (String, NSRange) -> TextEdit?) -> Bool {
+        guard !hasMarkedText(), let edit = command(string, selectedRange()) else { return false }
+        apply(edit)
+        return true
+    }
+
+    /// Applies a Command's result as one undo step of its own; the Styler restyles through the storage delegate.
+    private func apply(_ edit: TextEdit) {
+        guard let textStorage, !edit.replacements.isEmpty else { return }
+        breakUndoCoalescing()
+        undoManager?.beginUndoGrouping()
+        // From the last, so the ranges of the others stay valid.
+        for replacement in edit.replacements.reversed()
+        where shouldChangeText(in: replacement.range, replacementString: replacement.string) {
+            textStorage.replaceCharacters(in: replacement.range, with: replacement.string)
+            didChangeText()
+        }
+        setSelectedRange(edit.selection)
+        undoManager?.endUndoGrouping()
+        breakUndoCoalescing()
+    }
 }

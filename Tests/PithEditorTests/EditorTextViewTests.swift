@@ -116,4 +116,131 @@ struct EditorTextViewTests {
         #expect(!view.isGrammarCheckingEnabled)
         #expect(view.isContinuousSpellCheckingEnabled)
     }
+
+    // MARK: Block behavior
+
+    /// A view in a window, so it has an undo manager.
+    private func makeEditor(_ text: String, selection: NSRange) -> (EditorTextView, NSWindow) {
+        let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let view = EditorTextView()
+        view.allowsUndo = true
+        window.contentView = view
+        view.string = text
+        view.setSelectedRange(selection)
+        return (view, window)
+    }
+
+    /// Closes the undo group of the current event, as the run loop does after each key press.
+    private func endEvent(_ undo: UndoManager) {
+        RunLoop.current.run(mode: .default, before: Date())
+    }
+
+    @Test func newlineContinuesTheList() {
+        let (view, window) = makeEditor("1. a\n2. b", selection: NSRange(location: 4, length: 0))
+        view.insertNewline(nil)
+        #expect(view.string == "1. a\n2. \n3. b")
+        #expect(view.selectedRange() == NSRange(location: 8, length: 0))
+        _ = window
+    }
+
+    @Test func newlineOutsideAListIsPlain() {
+        let (view, window) = makeEditor("text", selection: NSRange(location: 4, length: 0))
+        view.insertNewline(nil)
+        #expect(view.string == "text\n")
+        _ = window
+    }
+
+    @Test func oneUndoRevertsTheWholeCommandAndRedoRepeatsIt() throws {
+        let (view, window) = makeEditor("1. a\n2. b\n3. c", selection: NSRange(location: 4, length: 0))
+        view.insertNewline(nil)
+        #expect(view.string == "1. a\n2. \n3. b\n4. c")
+        let undo = try #require(view.undoManager)
+        undo.undo()
+        #expect(view.string == "1. a\n2. b\n3. c")
+        undo.redo()
+        #expect(view.string == "1. a\n2. \n3. b\n4. c")
+        _ = window
+    }
+
+    @Test func commandIsNotCoalescedWithTyping() throws {
+        let (view, window) = makeEditor("- a", selection: NSRange(location: 3, length: 0))
+        let undo = try #require(view.undoManager)
+        view.insertText("b", replacementRange: view.selectedRange())
+        endEvent(undo)
+        view.insertNewline(nil)
+        endEvent(undo)
+        view.insertText("c", replacementRange: view.selectedRange())
+        endEvent(undo)
+        #expect(view.string == "- ab\n- c")
+        undo.undo()
+        #expect(view.string == "- ab\n- ")
+        undo.undo()
+        #expect(view.string == "- ab")
+        _ = window
+    }
+
+    @Test func markedTextGetsTheStandardNewline() {
+        let (view, window) = makeEditor("- a", selection: NSRange(location: 3, length: 0))
+        view.setMarkedText("b", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(view.hasMarkedText())
+        view.insertNewline(nil)
+        #expect(!view.string.contains("\n- "))
+        _ = window
+    }
+
+    @Test func tabNestsAndBacktabUnnestsAnItem() throws {
+        let (view, window) = makeEditor("1. a\n2. b\n3. c", selection: NSRange(location: 9, length: 0))
+        let undo = try #require(view.undoManager)
+        view.insertTab(nil)
+        endEvent(undo)
+        #expect(view.string == "1. a\n  1. b\n2. c")
+        #expect(view.selectedRange() == NSRange(location: 11, length: 0))
+        view.insertBacktab(nil)
+        endEvent(undo)
+        #expect(view.string == "1. a\n2. b\n3. c")
+        #expect(view.selectedRange() == NSRange(location: 9, length: 0))
+        undo.undo()
+        #expect(view.string == "1. a\n  1. b\n2. c")
+        _ = window
+    }
+
+    @Test func tabOutsideAnItemInsertsATab() {
+        let (view, window) = makeEditor("text", selection: NSRange(location: 4, length: 0))
+        view.insertTab(nil)
+        #expect(view.string == "text\t")
+        _ = window
+    }
+
+    @Test func tabOnAnItemThatCannotNestDoesNothing() {
+        let (view, window) = makeEditor("- a", selection: NSRange(location: 3, length: 0))
+        view.insertTab(nil)
+        #expect(view.string == "- a")
+        _ = window
+    }
+
+    @Test func indentAndOutdentActions() {
+        let (view, window) = makeEditor("- a\n- b", selection: NSRange(location: 7, length: 0))
+        view.indent(nil)
+        #expect(view.string == "- a\n  - b")
+        view.outdent(nil)
+        #expect(view.string == "- a\n- b")
+        _ = window
+    }
+
+    @Test func indentOutsideAnItemDoesNothing() {
+        let (view, window) = makeEditor("text", selection: NSRange(location: 4, length: 0))
+        view.indent(nil)
+        view.outdent(nil)
+        #expect(view.string == "text")
+        _ = window
+    }
+
+    @Test func commandRestylesTheChangedLines() throws {
+        let (view, window) = makeEditor("- a\n- b", selection: NSRange(location: 7, length: 0))
+        view.insertTab(nil)
+        let storage = try #require(view.textStorage)
+        let style = storage.attribute(.paragraphStyle, at: 4, effectiveRange: nil) as? NSParagraphStyle
+        #expect((style?.headIndent ?? 0) > (storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)?.headIndent ?? 0)
+        _ = window
+    }
 }

@@ -22,6 +22,13 @@ Emoji 🎉 inside **bold 🚀** and `code 🧪`.
 2. Second, long enough to wrap onto the next line so the wrapped text lines up after the number and its dot.
 10. Tenth
 
+1. Ordered with nesting
+  1. Nested first
+  2. Nested second
+    - Bullet under a number
+2. Back on the top level
+3. [ ] Numbered task
+
 - [ ] Open task
 - [x] Done task: secondary color, no strikethrough, even with **bold** and https://example.com
 - [ ] Open task long enough to wrap onto the next line, so the wrapped part lines up after the checkbox.
