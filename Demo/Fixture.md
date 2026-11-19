@@ -5,7 +5,8 @@
 Plain paragraph text in SF Pro 14 with a line height multiple of 1.25. It is long enough to wrap onto a second line in a normal window, so the line spacing is visible.
 
 Inline: **bold**, __bold too__, *italic*, _italic too_, ***bold italic***, ~~struck through~~, ==highlighted==, `inline code`.
-Nesting: **bold with *italic* inside**, **a *b***, **bold `code`**, *italic `code`*, ==highlight with **bold**==, ~~struck **bold**~~.
+Nesting: **bold with *italic* inside**, **a *b***, **bold `code`**, *italic `code`*, ==highlight with **bold**==, ~~struck **bold**~~, ==highlight with `code` inside==.
+A wrapped highlight: ==this highlighted stretch is long enough to wrap onto the next line, so each of its lines gets a plate of its own==, and `inline code that wraps onto the next line as well` after it.
 Links: [link text](https://example.com/path), [**bold** link](https://example.com), bare https://example.com/page?q=1 and http://example.org.
 More links: [no scheme](example.com), [mail](mailto:someone@example.com), [bare URL as text https://example.org](https://example.com), [space in url](not a link), [cyrillic](пример.рф/тест).
 A long link that wraps: https://example.com/a/very/long/path/that/keeps/going/and/going/until/it/wraps/onto/the/next/line/even/in/a/wide/window/so/both/of/its/lines/can/be/clicked/and/checked/by/hand
@@ -42,6 +43,10 @@ Emoji 🎉 inside **bold 🚀** and `code 🧪`.
 let greeting = "**not bold** inside code"
 
 func hello() { print(greeting) }
+let aLongLineOfCode = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+```
+
+```
 ```
 
 ```

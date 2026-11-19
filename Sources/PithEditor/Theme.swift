@@ -7,6 +7,8 @@ public struct Theme: Sendable {
     public static let textSize: CGFloat = 14
     public static let monoSize: CGFloat = 13
     public static let lineHeightMultiple: CGFloat = 1.25
+    /// Space between a code block's fences and the top and bottom edges of its plate.
+    public static let codeBlockPadding: CGFloat = 4
 
     public var baseAttributes: [NSAttributedString.Key: Any] {
         var attributes = attributes(for: TextStyle())
@@ -16,19 +18,21 @@ public struct Theme: Sendable {
 
     /// The style of a stretch of text in a Block of `block`, covered by `spans` listed outer first.
     ///
-    /// Flags add up and the innermost color or background wins. A Marker comes last: it keeps
-    /// the background around it but drops bold, italic and strikethrough.
+    /// Flags add up, the innermost color wins and inner plates lie on outer ones. A Marker comes last:
+    /// it keeps the plates around it but drops bold, italic and strikethrough.
     public func style(block: BlockKind, spans: [SpanKind]) -> TextStyle {
         let base = TextStyle(color: .label).merging(style(of: block))
         let element = spans.filter { !$0.isMarker }.reduce(base) { $0.merging(style(of: $1)) }
         guard spans.contains(where: \.isMarker) else { return element }
-        return TextStyle(monospaced: true, color: .secondary, background: element.background)
+        return TextStyle(monospaced: true, color: .secondary, plates: element.plates)
     }
 
     private func style(of block: BlockKind) -> TextStyle {
         switch block {
         case .heading: TextStyle(bold: true)
         case .task(_, checked: true): TextStyle(color: .secondary)
+        // The whole block is on one plate: fences, body, empty lines and the line breaks between them.
+        case .codeBlock: TextStyle(plates: [.codeBlock])
         default: TextStyle()
         }
     }
@@ -38,22 +42,23 @@ public struct Theme: Sendable {
         case .strong: TextStyle(bold: true)
         case .emphasis: TextStyle(italic: true)
         case .strikethrough: TextStyle(strikethrough: true)
-        case .highlight: TextStyle(background: .highlight)
-        case .code, .codeContent: TextStyle(monospaced: true, background: .code)
+        case .highlight: TextStyle(plates: [.highlight])
+        case .code: TextStyle(monospaced: true, plates: [.inlineCode])
+        case .codeContent: TextStyle(monospaced: true, plates: [.codeBlock])
         case .url: TextStyle(color: .link)
         default: TextStyle()
         }
     }
 
-    /// Font, colors and strikethrough; the paragraph style comes from `paragraphStyle(headIndent:)`.
+    /// Font, colors, strikethrough and plates; the paragraph style comes from `paragraphStyle(headIndent:)`.
     public func attributes(for style: TextStyle) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font(for: style),
             .foregroundColor: color(for: style.color ?? .label),
         ]
         if style.strikethrough { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-        // The one place backgrounds turn into attributes.
-        if let background = style.background { attributes[.backgroundColor] = color(for: background) }
+        // The one place backgrounds turn into attributes: a plate drawn by `PlateLayoutFragment`, never `.backgroundColor`.
+        if !style.plates.isEmpty { attributes[.pithBackground] = PlateStack(style.plates) }
         return attributes
     }
 
@@ -74,10 +79,11 @@ public struct Theme: Sendable {
         }
     }
 
-    private func color(for background: TextStyle.Background) -> NSColor {
-        switch background {
+    /// The fill of a plate of `kind`.
+    public func color(for kind: PlateKind) -> NSColor {
+        switch kind {
         case .highlight: highlightColor
-        case .code: .quaternarySystemFill
+        case .inlineCode, .codeBlock: .quaternarySystemFill
         }
     }
 
@@ -91,10 +97,11 @@ public struct Theme: Sendable {
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
-    public func paragraphStyle(headIndent: CGFloat) -> NSParagraphStyle {
+    public func paragraphStyle(headIndent: CGFloat, spacingBefore: CGFloat = 0, spacingAfter: CGFloat = 0) -> NSParagraphStyle {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineHeightMultiple = Self.lineHeightMultiple
-        paragraph.paragraphSpacing = 0
+        paragraph.paragraphSpacingBefore = spacingBefore
+        paragraph.paragraphSpacing = spacingAfter
         paragraph.firstLineHeadIndent = 0
         paragraph.headIndent = headIndent
         return paragraph

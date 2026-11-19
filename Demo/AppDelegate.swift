@@ -49,6 +49,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
         if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
 
+        // `-PithSelection "<location> <length>"` starts with that selection, for screenshots of it.
+        if let numbers = UserDefaults.standard.string(forKey: "PithSelection")?.split(separator: " ").compactMap({ Int($0) }),
+           numbers.count == 2 {
+            editor.setSelectedRange(NSRange(location: numbers[0], length: numbers[1]))
+            editor.scrollRangeToVisible(editor.selectedRange())
+        }
+
         if let path = UserDefaults.standard.string(forKey: "PithSnapshot") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.snapshot(to: URL(fileURLWithPath: path))
@@ -58,7 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `-PithSnapshot <path>` writes a PNG of the window's content and quits: screenshots without screen recording rights.
+    /// `-PithWindowSize "<width> <height>"` sizes the window's content first, for screenshots at a fixed width.
     private func snapshot(to url: URL) {
+        if let size = UserDefaults.standard.string(forKey: "PithWindowSize")?.split(separator: " ").compactMap({ Double($0) }),
+           size.count == 2, let window, let editor {
+            window.setFrame(window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: NSSize(width: size[0], height: size[1]))), display: true)
+            window.contentView?.layoutSubtreeIfNeeded()
+            editor.scrollRangeToVisible(editor.selectedRange())
+        }
         guard let view = window?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)

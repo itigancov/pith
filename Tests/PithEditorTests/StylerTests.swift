@@ -56,8 +56,16 @@ private final class Styled {
         uniform(.foregroundColor, substring, occurrence, as: NSColor.self) ?? nil
     }
 
-    func background(_ substring: String, _ occurrence: Int = 0) -> NSColor? {
-        uniform(.backgroundColor, substring, occurrence, as: NSColor.self) ?? nil
+    /// The kinds of the plates behind every character of the match, outer first; `nil` if they differ across it.
+    func plates(_ substring: String, _ occurrence: Int = 0) -> [PlateKind]? {
+        uniform(.pithBackground, substring, occurrence, as: PlateStack.self).map { $0?.kinds ?? [] }
+    }
+
+    /// The longest run of one `.pithBackground` value around `location`, and the kinds in it.
+    func plateRun(at location: Int) -> (range: NSRange, kinds: [PlateKind]) {
+        var range = NSRange()
+        let stack = storage.attribute(.pithBackground, at: location, longestEffectiveRange: &range, in: NSRange(location: 0, length: storage.length))
+        return (range, (stack as? PlateStack)?.kinds ?? [])
     }
 
     func isStruck(_ substring: String, _ occurrence: Int = 0) -> Bool {
@@ -122,16 +130,17 @@ struct StylerTests {
         #expect(s.font("~~") == mono)
     }
 
-    @Test func highlightBackgroundCoversItsMarkers() {
+    @Test func highlightPlateCoversItsMarkers() {
         let s = Styled("a ==x== b")
-        #expect(s.background("==x==") == Theme().highlightColor)
-        #expect(s.background("a ") == nil)
+        #expect(s.plates("==x==") == [.highlight])
+        #expect(s.plates("a ") == [])
+        #expect(s.plates(" b") == [])
         #expect(s.font("==") == mono)
     }
 
-    @Test func codeIsMonoOnCodeBackgroundWithItsBackticks() {
+    @Test func codeIsMonoOnAnInlineCodePlateWithItsBackticks() {
         let s = Styled("a `x` b")
-        #expect(s.background("`x`") == .quaternarySystemFill)
+        #expect(s.plates("`x`") == [.inlineCode])
         #expect(s.font("x") == mono)
         #expect(s.color("`") == .secondaryLabelColor)
         #expect(s.color("x") == .labelColor)
@@ -191,7 +200,7 @@ struct StylerTests {
         #expect(s.color("todo") == .labelColor)
     }
 
-    @Test func codeBlockBodyIsMonoOnCodeBackgroundAndFencesAreSecondary() {
+    @Test func codeBlockBodyIsMonoAndFencesAreSecondary() {
         let s = Styled("```swift\nlet **x** = 1\n```\nafter")
         #expect(s.color("```", 0) == .secondaryLabelColor)
         #expect(s.color("swift") == .secondaryLabelColor)
@@ -199,22 +208,60 @@ struct StylerTests {
         #expect(s.font("```", 1) == mono)
         #expect(s.font("let **x** = 1") == mono)
         #expect(s.color("let **x** = 1") == .labelColor)
-        #expect(s.background("let **x** = 1") == .quaternarySystemFill)
-        #expect(s.background("```", 0) == nil)
         #expect(s.font("after") == text)
     }
 
-    @Test func emptyLinesInsideACodeBlockHaveNoBackground() {
-        let s = Styled("```\na\n\nb\n```")
-        #expect(s.background("a") == .quaternarySystemFill)
-        let emptyLine = s.range("a").upperBound + 1
-        #expect(s.storage.attribute(.backgroundColor, at: emptyLine, effectiveRange: nil) == nil)
+    @Test func codeBlockIsOneRunOfItsPlateFromTheOpeningFenceToTheEndOfTheClosingOne() {
+        let s = Styled("a\n```swift\nlet `x` = 1\n\n  \n```\nafter")
+        let run = s.plateRun(at: s.range("```").location)
+        #expect(run.kinds == [.codeBlock])
+        #expect(run.range == NSRange(location: s.range("```", 0).location, length: s.range("```", 1).upperBound - s.range("```", 0).location))
+        #expect(s.plates("a\n") == [])
+        #expect(s.plates("\nafter") == [])
     }
 
-    @Test func unclosedCodeBlockRunsToTheEndOfTheNote() {
+    @Test func fenceLinesHavePaddingSpacingAndTheBodyHasNone() {
+        let s = Styled("a\n```swift\nb\n```\nc")
+        #expect(s.paragraph("a")?.paragraphSpacing == 0)
+        #expect(s.paragraph("```swift")?.paragraphSpacingBefore == 4)
+        #expect(s.paragraph("```swift")?.paragraphSpacing == 0)
+        #expect(s.paragraph("b")?.paragraphSpacingBefore == 0)
+        #expect(s.paragraph("b")?.paragraphSpacing == 0)
+        let closing = s.range("```", 1)
+        for location in closing.location...closing.upperBound {
+            #expect(s.paragraph(at: location)?.paragraphSpacingBefore == 0)
+            #expect(s.paragraph(at: location)?.paragraphSpacing == 4)
+        }
+        #expect(s.paragraph("c")?.paragraphSpacingBefore == 0)
+    }
+
+    @Test func emptyCodeBlockIsOnAPlateWithPaddingOnBothFences() {
+        let s = Styled("```\n```")
+        #expect(s.plates("```\n```") == [.codeBlock])
+        #expect(s.paragraph(at: 0)?.paragraphSpacingBefore == 4)
+        #expect(s.paragraph(at: 4)?.paragraphSpacing == 4)
+    }
+
+    @Test func unclosedCodeBlockRunsToTheEndOfTheNoteWithoutBottomPadding() {
         let s = Styled("```\na\n# b")
         #expect(s.font("# b") == mono)
-        #expect(s.background("# b") == .quaternarySystemFill)
+        #expect(s.plateRun(at: 0) == (NSRange(location: 0, length: s.text.utf16.count), [.codeBlock]))
+        #expect(s.paragraph(at: 0)?.paragraphSpacingBefore == 4)
+        #expect(s.paragraph("# b")?.paragraphSpacing == 0)
+    }
+
+    @Test func removingAFenceRemovesThePlateAndThePadding() {
+        let s = Styled("```\na\n```\nb")
+        s.replace("```", 1, with: "")
+        #expect(s.plateRun(at: 0) == (NSRange(location: 0, length: s.text.utf16.count), [.codeBlock]))
+        #expect(s.paragraph("b")?.paragraphSpacing == 0)
+        s.replace("```", 0, with: "")
+        #expect(s.text == "\na\n\nb")
+        #expect(s.plates(s.text) == [])
+        for location in 0..<s.text.utf16.count {
+            #expect(s.paragraph(at: location)?.paragraphSpacingBefore == 0)
+            #expect(s.paragraph(at: location)?.paragraphSpacing == 0)
+        }
     }
 
     @Test func loneStarIsTextUntilItGetsAPair() {
@@ -330,7 +377,7 @@ struct StylerTests {
         s.insert("```\n", at: 0)
         #expect(s.restyled == ["```\na\n**b**\nc"])
         #expect(s.font("**b**") == mono)
-        #expect(s.background("**b**") == .quaternarySystemFill)
+        #expect(s.plates("**b**") == [.codeBlock])
     }
 
     @Test func closingAFenceRestylesTheTail() {
@@ -338,7 +385,7 @@ struct StylerTests {
         s.insert("```\n", at: s.range("**b**").location)
         #expect(s.restyled == ["```\na\n```", "**b**", "c"])
         #expect(s.font("b") == bold)
-        #expect(s.background("**b**") == nil)
+        #expect(s.plates("**b**") == [])
     }
 
     @Test func insertingSeveralLinesRestylesOnlyThem() {
