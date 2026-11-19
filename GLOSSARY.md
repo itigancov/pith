@@ -8,6 +8,10 @@ A quick-notes app for macOS: Markdown notes with visible markup. This glossary i
 A single note: plain Markdown text that the user sees and edits as is.
 _Avoid_: Document, file, page
 
+**Panel**:
+The window Pith shows over all apps when the user presses the hotkey. It holds one Note at a time and hides when the user leaves it.
+_Avoid_: Window, popup, HUD
+
 **Stack**:
 All Notes not in the Trash, in the order they were created, that the user pages through. Editing a Note never moves it.
 _Avoid_: Notebook, list of notes
