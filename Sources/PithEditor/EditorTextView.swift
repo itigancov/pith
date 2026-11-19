@@ -4,6 +4,8 @@ import AppKit
 public final class EditorTextView: NSTextView {
     /// Restyles the text after every edit of the storage, however it is made.
     public let styler = Styler()
+    /// Draws the plates of highlights and code behind the text.
+    private lazy var plateLayout = PlateLayout(theme: styler.theme)
 
     public convenience init() {
         self.init(usingTextLayoutManager: true)
@@ -18,6 +20,8 @@ public final class EditorTextView: NSTextView {
             styler.attach(to: textStorage)
         }
         typingAttributes = styler.theme.baseAttributes
+        assert(textLayoutManager?.delegate == nil, "the text layout manager already has a delegate")
+        textLayoutManager?.delegate = plateLayout
 
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
@@ -214,6 +218,22 @@ public final class EditorTextView: NSTextView {
         edit.selection = selectedRange()
         apply(edit)
         return true
+    }
+
+    // MARK: Plates
+
+    /// The plates the laid-out paragraphs draw, in view coordinates, in the order they are drawn. Lays out the whole Note.
+    var plates: [Plate] {
+        guard let layout = textLayoutManager else { return [] }
+        let origin = textContainerOrigin
+        var result: [Plate] = []
+        layout.enumerateTextLayoutFragments(from: layout.documentRange.location, options: [.ensuresLayout]) { fragment in
+            guard let fragment = fragment as? PlateLayoutFragment else { return true }
+            let offset = CGPoint(x: fragment.layoutFragmentFrame.minX + origin.x, y: fragment.layoutFragmentFrame.minY + origin.y)
+            result += fragment.plates.map { $0.offsetBy(offset) }
+            return true
+        }
+        return result
     }
 
     // MARK: Links

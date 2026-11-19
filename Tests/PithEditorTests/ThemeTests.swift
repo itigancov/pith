@@ -13,6 +13,10 @@ private func font(_ attributes: [NSAttributedString.Key: Any]) -> NSFont? {
     attributes[.font] as? NSFont
 }
 
+private func plates(_ attributes: [NSAttributedString.Key: Any]) -> [PlateKind] {
+    (attributes[.pithBackground] as? PlateStack)?.kinds ?? []
+}
+
 private func traits(_ attributes: [NSAttributedString.Key: Any]) -> NSFontDescriptor.SymbolicTraits {
     font(attributes)?.fontDescriptor.symbolicTraits ?? []
 }
@@ -31,6 +35,7 @@ struct ThemeTests {
         #expect(font(base) == NSFont.systemFont(ofSize: 14))
         #expect(base[.foregroundColor] as? NSColor == NSColor.labelColor)
         #expect(base[.backgroundColor] == nil)
+        #expect(base[.pithBackground] == nil)
         #expect(base[.strikethroughStyle] == nil)
     }
 
@@ -77,19 +82,51 @@ struct ThemeTests {
         #expect(traits(struck).isDisjoint(with: [.bold, .italic]))
     }
 
-    @Test func highlightHasHighlightBackground() {
+    @Test func highlightIsOnAHighlightPlate() {
         let highlight = attributes([.highlight])
-        #expect(highlight[.backgroundColor] as? NSColor == theme.highlightColor)
+        #expect(plates(highlight) == [.highlight])
         #expect(highlight[.foregroundColor] as? NSColor == NSColor.labelColor)
     }
 
-    @Test func codeIsMono13OnCodeBackground() {
-        for kind in [SpanKind.code, .codeContent] {
-            let code = attributes([kind], in: kind == .code ? .paragraph : .codeBlock(language: nil))
-            #expect(font(code) == NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
-            #expect(code[.backgroundColor] as? NSColor == NSColor.quaternarySystemFill)
-            #expect(code[.foregroundColor] as? NSColor == NSColor.labelColor)
+    @Test func inlineCodeIsMono13OnAnInlineCodePlate() {
+        let code = attributes([.code])
+        #expect(font(code) == NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
+        #expect(plates(code) == [.inlineCode])
+        #expect(code[.foregroundColor] as? NSColor == NSColor.labelColor)
+    }
+
+    @Test func codeContentIsMono13OnACodeBlockPlate() {
+        let code = attributes([.codeContent], in: .codeBlock(language: nil))
+        #expect(font(code) == NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
+        #expect(plates(code) == [.codeBlock])
+        #expect(code[.foregroundColor] as? NSColor == NSColor.labelColor)
+    }
+
+    @Test func everythingInACodeBlockIsOnItsPlate() {
+        let block = BlockKind.codeBlock(language: "swift")
+        for spans in [[], [SpanKind.fence], [.fenceLanguage], [.codeContent]] {
+            #expect(plates(attributes(spans, in: block)) == [.codeBlock], "\(spans)")
         }
+    }
+
+    @Test func codeInsideAHighlightIsOnAPlateOnTopOfTheHighlight() {
+        #expect(plates(attributes([.highlight, .code])) == [.highlight, .inlineCode])
+        #expect(plates(attributes([.highlight, .strong, .code, .inlineMarker])) == [.highlight, .inlineCode])
+    }
+
+    @Test func nothingGivesABackgroundColor() {
+        let kinds: [SpanKind] = markerKinds + [.codeContent, .strong, .emphasis, .strikethrough, .highlight, .code, .link, .linkText, .url]
+        for kind in kinds {
+            #expect(attributes([kind])[.backgroundColor] == nil, "\(kind)")
+            #expect(attributes([.highlight, kind])[.backgroundColor] == nil, "\(kind)")
+            #expect(attributes([kind], in: .codeBlock(language: nil))[.backgroundColor] == nil, "\(kind)")
+        }
+    }
+
+    @Test func platesKeepTheColorsOfTicket04() {
+        #expect(theme.color(for: .highlight) == theme.highlightColor)
+        #expect(theme.color(for: .inlineCode) == NSColor.quaternarySystemFill)
+        #expect(theme.color(for: .codeBlock) == NSColor.quaternarySystemFill)
     }
 
     @Test func urlIsLinkColoredWithoutLinkAttribute() {
@@ -120,7 +157,7 @@ struct ThemeTests {
         let marker = attributes([kind])
         #expect(font(marker) == NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
         #expect(marker[.foregroundColor] as? NSColor == NSColor.secondaryLabelColor)
-        #expect(marker[.backgroundColor] == nil)
+        #expect(plates(marker) == [])
     }
 
     @Test func markerDropsTheBoldItalicAndStrikethroughOfItsElement() {
@@ -132,10 +169,10 @@ struct ThemeTests {
         #expect(font(attributes([.headingMarker], in: .heading(level: 1))) == NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
     }
 
-    @Test func markerKeepsTheBackgroundOfItsElement() {
-        #expect(attributes([.highlight, .inlineMarker])[.backgroundColor] as? NSColor == theme.highlightColor)
-        #expect(attributes([.code, .inlineMarker])[.backgroundColor] as? NSColor == NSColor.quaternarySystemFill)
-        #expect(attributes([.highlight, .strong, .inlineMarker])[.backgroundColor] as? NSColor == theme.highlightColor)
+    @Test func markerKeepsThePlateOfItsElement() {
+        #expect(plates(attributes([.highlight, .inlineMarker])) == [.highlight])
+        #expect(plates(attributes([.code, .inlineMarker])) == [.inlineCode])
+        #expect(plates(attributes([.highlight, .strong, .inlineMarker])) == [.highlight])
     }
 
     // MARK: Block context
@@ -156,7 +193,7 @@ struct ThemeTests {
     }
 
     @Test func otherBlocksAddNothing() {
-        let blocks: [BlockKind] = [.blank, .bullet(level: 1), .ordered(level: 0, number: 2), .quote, .codeBlock(language: "swift")]
+        let blocks: [BlockKind] = [.blank, .bullet(level: 1), .ordered(level: 0, number: 2), .quote]
         for block in blocks {
             #expect(theme.style(block: block, spans: []) == theme.style(block: .paragraph, spans: []))
         }

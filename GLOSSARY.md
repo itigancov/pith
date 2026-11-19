@@ -28,6 +28,10 @@ _Avoid_: Token, range, annotation
 The markup characters that stay in the text and are always visible: `**`, `#`, `- `, `> `.
 _Avoid_: Delimiter, syntax, sigil
 
+**Plate**:
+A rounded fill drawn behind a highlight, an inline code or a whole code block, Markers included. Its kinds stack: inline code inside a highlight lies on a plate of its own on top of the highlight's.
+_Avoid_: Background, box, pill
+
 **Toggle**:
 A command that wraps text in a Marker or removes the wrapping in one action.
 _Avoid_: Format, wrap, switch

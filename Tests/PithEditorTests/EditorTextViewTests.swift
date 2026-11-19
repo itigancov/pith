@@ -706,4 +706,227 @@ struct EditorTextViewTests {
         #expect(traits?.contains(.bold) == true)
         _ = window
     }
+
+    // MARK: Plates
+
+    /// A laid-out editor on `text`, 300pt wide with the demo's 16pt inset.
+    private func makeLaidOutEditor(_ text: String) throws -> (EditorTextView, NSWindow) {
+        let (view, window) = makeEditor(text, selection: NSRange(location: 0, length: 0))
+        view.textContainerInset = NSSize(width: 16, height: 16)
+        view.frame = NSRect(x: 0, y: 0, width: 300, height: 400)
+        let layout = try #require(view.textLayoutManager)
+        layout.ensureLayout(for: layout.documentRange)
+        return (view, window)
+    }
+
+    /// The frames of the glyphs of `range` (UTF-16), one per line, in view coordinates.
+    private func glyphLines(_ view: EditorTextView, _ range: NSRange) throws -> [CGRect] {
+        let layout = try #require(view.textLayoutManager)
+        let start = try #require(layout.location(layout.documentRange.location, offsetBy: range.location))
+        let textRange = try #require(NSTextRange(location: start, end: layout.location(start, offsetBy: range.length)))
+        var lines: [CGRect] = []
+        layout.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, segment, _, _ in
+            lines.append(segment.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y))
+            return true
+        }
+        return lines
+    }
+
+    private func range(_ substring: String, in view: EditorTextView) -> NSRange {
+        (view.string as NSString).range(of: substring)
+    }
+
+    /// The left and right edges of the text in view coordinates: the container inside its line fragment padding.
+    private func textEdges(_ view: EditorTextView) throws -> (left: CGFloat, right: CGFloat) {
+        let container = try #require(view.textContainer)
+        let left = view.textContainerOrigin.x + container.lineFragmentPadding
+        return (left, view.textContainerOrigin.x + container.size.width - container.lineFragmentPadding)
+    }
+
+    @Test func shortHighlightIsOnePlateTwoPointsWiderThanItsGlyphsAndAsTallAsTheFont() throws {
+        let (view, window) = try makeLaidOutEditor("a ==bc== d")
+        let glyphs = try #require(try glyphLines(view, range("==bc==", in: view)).first)
+        let plate = try #require(view.plates.first)
+        #expect(view.plates.count == 1)
+        #expect(plate.kind == .highlight)
+        #expect(abs(plate.frame.minX - (glyphs.minX - 2)) < 0.01)
+        #expect(abs(plate.frame.maxX - (glyphs.maxX + 2)) < 0.01)
+        #expect(plate.frame.height > Theme.textSize)
+        #expect(plate.frame.height < glyphs.height)
+        #expect(plate.frame.minY > glyphs.minY)
+        #expect(plate.roundsTop && plate.roundsBottom)
+        _ = window
+    }
+
+    @Test func wrappedHighlightIsOneRoundedPlatePerLineAndThePlatesDoNotTouch() throws {
+        let words = Array(repeating: "highlighted", count: 8).joined(separator: " ")
+        let (view, window) = try makeLaidOutEditor("a ==\(words)== b")
+        let lines = try glyphLines(view, range("==\(words)==", in: view))
+        let plates = view.plates
+        #expect(lines.count > 1)
+        #expect(plates.count == lines.count)
+        #expect(plates.allSatisfy { $0.kind == .highlight && $0.roundsTop && $0.roundsBottom })
+        for (upper, lower) in zip(plates, plates.dropFirst()) {
+            #expect(upper.frame.maxY < lower.frame.minY)
+        }
+        #expect(abs(plates[0].frame.minX - (lines[0].minX - 2)) < 0.01)
+        let last = try #require(lines.last)
+        #expect(abs(plates[plates.count - 1].frame.maxX - (last.maxX + 2)) < 0.01)
+        _ = window
+    }
+
+    @Test func inlineCodeInsideAHighlightIsAPlateOnTopOfTheHighlightPlate() throws {
+        let (view, window) = try makeLaidOutEditor("x ==a `b` c== y")
+        let plates = view.plates
+        #expect(plates.map(\.kind) == [.highlight, .inlineCode])
+        let highlight = try #require(plates.first)
+        let code = try #require(plates.last)
+        #expect(highlight.frame.contains(code.frame))
+        let codeGlyphs = try #require(try glyphLines(view, range("`b`", in: view)).first)
+        #expect(abs(code.frame.minX - (codeGlyphs.minX - 2)) < 0.01)
+        #expect(abs(code.frame.maxX - (codeGlyphs.maxX + 2)) < 0.01)
+        _ = window
+    }
+
+    @Test func codeBlockIsOneRectangleSixPointsPastTheTextWithRoundedEnds() throws {
+        let (view, window) = try makeLaidOutEditor("a\n```swift\nlet x = 1\n\n```\nb")
+        let plates = view.plates
+        let edges = try textEdges(view)
+        // One plate per paragraph: both fences, the body line and the empty line.
+        #expect(plates.count == 4)
+        #expect(plates.allSatisfy { $0.kind == .codeBlock })
+        for plate in plates {
+            #expect(abs(plate.frame.minX - (edges.left - 6)) < 0.01)
+            #expect(abs(plate.frame.maxX - (edges.right + 6)) < 0.01)
+        }
+        for (upper, lower) in zip(plates, plates.dropFirst()) {
+            #expect(abs(upper.frame.maxY - lower.frame.minY) < 0.01)
+        }
+        #expect(plates.map(\.roundsTop) == [true, false, false, false])
+        #expect(plates.map(\.roundsBottom) == [false, false, false, true])
+
+        // Padding inside the plate; the paragraphs around it stay clear.
+        let top = plates[0].frame.minY
+        let bottom = plates[3].frame.maxY
+        let opening = try #require(try glyphLines(view, range("```swift", in: view)).first)
+        let closing = try #require(try glyphLines(view, NSRange(location: range("```\nb", in: view).location, length: 3)).first)
+        #expect(opening.minY - top >= 4 - 0.01)
+        #expect(bottom - closing.maxY >= 4 - 0.01)
+        let before = try #require(try glyphLines(view, range("a", in: view)).first)
+        let after = try #require(try glyphLines(view, NSRange(location: view.string.utf16.count - 1, length: 1)).first)
+        #expect(top >= before.maxY - 0.01)
+        #expect(bottom <= after.minY + 0.01)
+        _ = window
+    }
+
+    @Test func codeTextLinesUpWithTheTextOfTheNote() throws {
+        let (view, window) = try makeLaidOutEditor("a\n```\nlet x = 1\n```")
+        let text = try #require(try glyphLines(view, range("a", in: view)).first)
+        let code = try #require(try glyphLines(view, range("let", in: view)).first)
+        #expect(abs(text.minX - code.minX) < 0.01)
+        _ = window
+    }
+
+    @Test func longCodeLineWrapsInsideThePlateFromTheSameLeftEdge() throws {
+        let line = Array(repeating: "let value = 1;", count: 6).joined(separator: " ")
+        let (view, window) = try makeLaidOutEditor("```\n\(line)\n```")
+        let lines = try glyphLines(view, range(line, in: view))
+        let edges = try textEdges(view)
+        #expect(lines.count > 1)
+        #expect(lines.allSatisfy { abs($0.minX - lines[0].minX) < 0.01 && $0.maxX <= edges.right + 0.01 })
+        #expect(view.plates.count == 3)
+        _ = window
+    }
+
+    @Test func emptyCodeBlockHasAPlate() throws {
+        let (view, window) = try makeLaidOutEditor("```\n```")
+        let plates = view.plates
+        #expect(plates.count == 2)
+        #expect(plates.map(\.roundsTop) == [true, false])
+        #expect(plates.map(\.roundsBottom) == [false, true])
+        _ = window
+    }
+
+    @Test func unclosedCodeBlockPlateRunsToTheEndWithRoundedBottom() throws {
+        let (view, window) = try makeLaidOutEditor("a\n```\nx\ny")
+        let plates = view.plates
+        #expect(plates.count == 3)
+        #expect(plates.map(\.roundsBottom) == [false, false, true])
+        _ = window
+    }
+
+    @Test func codeBlockAtTheStartOfTheNoteKeepsItsTopPadding() throws {
+        let (view, window) = try makeLaidOutEditor("```\na\n```")
+        let top = try #require(view.plates.first).frame.minY
+        let opening = try #require(try glyphLines(view, NSRange(location: 0, length: 3)).first)
+        #expect(abs(opening.minY - top - 4) < 0.01)
+        _ = window
+    }
+
+    @Test func closedCodeBlockAtTheEndLeavesTheEmptyLastLineOffItsPlate() throws {
+        let (view, window) = try makeLaidOutEditor("```\na\n```\n")
+        let bottom = try #require(view.plates.last).frame.maxY
+        let closing = try #require(try glyphLines(view, NSRange(location: 6, length: 3)).first)
+        #expect(abs(bottom - closing.maxY - 4) < 0.01)
+        _ = window
+    }
+
+    @Test func unclosedCodeBlockCoversTheEmptyLastLine() throws {
+        let (view, window) = try makeLaidOutEditor("```\na\n")
+        let plate = try #require(view.plates.last)
+        // The empty line after the last line break belongs to the layout of the last paragraph.
+        let layout = try #require(view.textLayoutManager)
+        let lineStart = try #require(layout.location(layout.documentRange.location, offsetBy: 4))
+        let last = try #require(layout.textLayoutFragment(for: lineStart))
+        let emptyLine = try #require(last.textLineFragments.last)
+        #expect(emptyLine.characterRange.length == 0)
+        let emptyLineBottom = last.layoutFragmentFrame.minY + emptyLine.typographicBounds.maxY + view.textContainerOrigin.y
+        #expect(plate.frame.maxY >= emptyLineBottom - 0.01)
+        #expect(plate.roundsBottom)
+        _ = window
+    }
+
+    @Test func adjacentCodeBlocksAreSeparatePlates() throws {
+        let (view, window) = try makeLaidOutEditor("```\na\n```\n```\nb\n```")
+        let plates = view.plates
+        #expect(plates.map(\.roundsTop) == [true, false, false, true, false, false])
+        #expect(plates.map(\.roundsBottom) == [false, false, true, false, false, true])
+        _ = window
+    }
+
+    @Test func codeBlockCornersFollowEditsAroundIt() throws {
+        let (view, window) = try makeLaidOutEditor("```\na\nb\n```\nc")
+        #expect(view.plates.map(\.roundsBottom) == [false, false, false, true])
+        // Without its closing fence the block runs on through `c`, to the end of the Note.
+        let closing = (view.string as NSString).range(of: "```\n", options: .backwards)
+        view.insertText("", replacementRange: closing)
+        #expect(view.string == "```\na\nb\nc")
+        #expect(view.plates.map(\.roundsTop) == [true, false, false, false])
+        #expect(view.plates.map(\.roundsBottom) == [false, false, false, true])
+        // A fence typed back after `a` closes the block there.
+        view.insertText("```\n", replacementRange: NSRange(location: 6, length: 0))
+        #expect(view.plates.map(\.roundsBottom) == [false, false, true])
+        // Text appended after an unclosed block at the end joins it.
+        view.string = "```\na"
+        view.insertText("\nb", replacementRange: NSRange(location: 5, length: 0))
+        #expect(view.plates.map(\.roundsBottom) == [false, false, true])
+        _ = window
+    }
+
+    @Test func textOutsidePlatesGivesNoPlates() throws {
+        let (view, window) = try makeLaidOutEditor("a **b** c\n- d\n> e [f](g.com)")
+        #expect(view.plates.isEmpty)
+        _ = window
+    }
+
+    @Test func platesFollowEdits() throws {
+        let (view, window) = try makeLaidOutEditor("a ==b c")
+        #expect(view.plates.isEmpty)
+        view.setSelectedRange(NSRange(location: 7, length: 0))
+        view.insertText("==", replacementRange: view.selectedRange())
+        #expect(view.plates.map(\.kind) == [.highlight])
+        view.insertText("\n```", replacementRange: view.selectedRange())
+        #expect(view.plates.map(\.kind) == [.highlight, .codeBlock])
+        _ = window
+    }
 }

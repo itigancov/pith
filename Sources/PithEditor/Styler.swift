@@ -126,13 +126,9 @@ public final class Styler: NSObject, NSTextStorageDelegate {
         let indent = measured ?? 0
 
         // Cut the Block into pieces where any Span starts or ends; each piece has one set of covering Spans.
-        // A code block is also cut around its line breaks: a background drawn behind one would mark empty lines.
-        let codeLineBreaks = isCode ? lineBreaks(in: block.content, of: storage) : []
         var cuts = Set([block.range.location, block.range.upperBound, end])
         for span in spans { cuts.formUnion([span.range.location, span.range.upperBound]) }
-        for lineBreak in codeLineBreaks { cuts.formUnion([lineBreak.location, lineBreak.upperBound]) }
         let points = cuts.sorted()
-        var lineBreakStarts = Set(codeLineBreaks.map(\.location))
 
         // Each `setAttributes` costs the storage an attribute run, so neighbors of one style go in one call.
         var stretch: (start: Int, style: TextStyle)?
@@ -141,14 +137,13 @@ public final class Styler: NSObject, NSTextStorageDelegate {
             storage.setAttributes(attributes(for: stretch.style, headIndent: indent), range: NSRange(location: stretch.start, length: stop - stretch.start))
         }
         for (start, stop) in zip(points, points.dropFirst()) where start < stop {
-            var style: TextStyle
+            let style: TextStyle
             if start >= block.range.upperBound {
                 // The line break after the Block.
                 style = TextStyle(color: .label)
             } else {
                 let kinds = spans.filter { $0.range.location <= start && stop <= $0.range.upperBound }.map(\.kind)
                 style = theme.style(block: block.kind, spans: kinds)
-                if lineBreakStarts.remove(start) != nil { style.background = nil }
             }
             if stretch?.style != style {
                 flush(upTo: start)
@@ -156,6 +151,8 @@ public final class Styler: NSObject, NSTextStorageDelegate {
             }
         }
         flush(upTo: end)
+
+        if isCode { padFences(of: block, through: end, in: storage) }
 
         if let prefix, measured == nil {
             let width = storage.attributedSubstring(from: prefix.range).size().width
@@ -199,24 +196,31 @@ public final class Styler: NSObject, NSTextStorageDelegate {
         }
     }
 
-    /// The line breaks within `range`: `\n`, `\r` or `\r\n`.
-    private func lineBreaks(in range: NSRange, of storage: NSTextStorage) -> [NSRange] {
+    /// Pads a code block's plate above its opening fence and below its closing one: paragraph spacing inside the plate.
+    /// An unclosed block runs to the end of the Note and has no bottom padding.
+    private func padFences(of block: Block, through end: Int, in storage: NSTextStorage) {
         let text = storage.mutableString
-        var result: [NSRange] = []
-        var search = range
-        while search.length > 0 {
-            let found = text.rangeOfCharacter(from: lineBreakCharacters, options: .literal, range: search)
-            guard found.location != NSNotFound else { break }
-            var lineBreak = found
-            if text.character(at: found.location) == carriageReturn, found.upperBound < range.upperBound,
-               text.character(at: found.upperBound) == lineFeed {
-                lineBreak.length = 2
-            }
-            result.append(lineBreak)
-            search = NSRange(location: lineBreak.upperBound, length: range.upperBound - lineBreak.upperBound)
+        let lines = block.range
+        let first = text.rangeOfCharacter(from: lineBreakCharacters, options: .literal, range: lines)
+        guard first.location != NSNotFound else {
+            // A lone opening fence: one paragraph, padded on top.
+            storage.addAttribute(.paragraphStyle, value: openingFenceParagraph, range: NSRange(location: lines.location, length: end - lines.location))
+            return
         }
-        return result
+        var openingEnd = first.upperBound
+        if text.character(at: first.location) == carriageReturn, openingEnd < lines.upperBound, text.character(at: openingEnd) == lineFeed {
+            openingEnd += 1
+        }
+        storage.addAttribute(.paragraphStyle, value: openingFenceParagraph, range: NSRange(location: lines.location, length: openingEnd - lines.location))
+
+        let isClosed = block.markers.filter { $0.kind == .fence }.count == 2
+        guard isClosed else { return }
+        let closingStart = text.rangeOfCharacter(from: lineBreakCharacters, options: [.literal, .backwards], range: lines).upperBound
+        storage.addAttribute(.paragraphStyle, value: closingFenceParagraph, range: NSRange(location: closingStart, length: end - closingStart))
     }
+
+    private lazy var openingFenceParagraph = theme.paragraphStyle(headIndent: 0, spacingBefore: Theme.codeBlockPadding)
+    private lazy var closingFenceParagraph = theme.paragraphStyle(headIndent: 0, spacingAfter: Theme.codeBlockPadding)
 }
 
 /// Edits of the storage merged into one: the range they cover, in the text after them, and their total change in length.
