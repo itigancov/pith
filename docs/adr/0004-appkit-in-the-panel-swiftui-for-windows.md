@@ -1,0 +1,3 @@
+# AppKit in the panel, SwiftUI only for separate windows
+
+Everything inside the panel (the editor, paging through the Stack, Search, the Trash, the toast, menus) is AppKit: it shares one responder chain with `EditorTextView`, needs Finder-style multiple selection (`NSTableView`) and Core Animation paging, none of which SwiftUI offers on macOS 14. Settings and onboarding are separate windows built in SwiftUI inside `NSHostingView`, because they are plain forms and faster to build that way; if one cannot match its artboard, its ticket moves it to AppKit. Models are `@Observable`, so SwiftUI binds to them directly and AppKit observes them through a small `withObservationTracking` helper.

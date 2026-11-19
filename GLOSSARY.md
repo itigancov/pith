@@ -24,6 +24,10 @@ _Avoid_: Last, recent, current
 The Notes the user has deleted. They stay there until restored to their place in the Stack or deleted for good.
 _Avoid_: Recently deleted, bin, archive
 
+**Search**:
+Finding Notes in the Stack by any piece of their text, ignoring case and accents. It lists the matching Notes, most recently edited first.
+_Avoid_: Find, filter, lookup
+
 **Block**:
 A line-level unit of a Note: paragraph, heading, list item, task, quote. A code block is the one multi-line exception.
 _Avoid_: Paragraph, section
