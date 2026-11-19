@@ -9,8 +9,20 @@ A single note: plain Markdown text that the user sees and edits as is.
 _Avoid_: Document, file, page
 
 **Stack**:
-An ordered set of Notes that the user pages through. Out of scope for the prototype.
+All Notes not in the Trash, in the order they were created, that the user pages through. Editing a Note never moves it.
 _Avoid_: Notebook, list of notes
+
+**Blank**:
+The empty Note at the end of the Stack, shown when the user creates a Note or pages past the last one. It becomes a Note only once the user types; a Note that is left empty stops being one.
+_Avoid_: Draft, placeholder, new note
+
+**Latest**:
+The Note that ⌘1 jumps to: either the newest Note in the Stack or the last edited one, as the user chooses.
+_Avoid_: Last, recent, current
+
+**Trash**:
+The Notes the user has deleted. They stay there until restored to their place in the Stack or deleted for good.
+_Avoid_: Recently deleted, bin, archive
 
 **Block**:
 A line-level unit of a Note: paragraph, heading, list item, task, quote. A code block is the one multi-line exception.
