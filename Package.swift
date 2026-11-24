@@ -6,17 +6,23 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "PithEditor", targets: ["PithEditor"]),
+        .library(name: "PithNotes", targets: ["PithNotes"]),
         .library(name: "PithApp", targets: ["PithApp"]),
     ],
     targets: [
         .target(name: "PithEditor"),
+        .target(
+            name: "PithNotes",
+            swiftSettings: [.defaultIsolation(MainActor.self)]
+        ),
         .target(
             name: "PithApp",
             dependencies: ["PithEditor"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         // Restyle timings in release: `make bench`.
-        .executableTarget(name: "PithBench", dependencies: ["PithEditor"]),
+        .executableTarget(name: "PithBench", dependencies: ["PithEditor", "PithNotes"]),
         .testTarget(name: "PithEditorTests", dependencies: ["PithEditor"]),
+        .testTarget(name: "PithNotesTests", dependencies: ["PithNotes"]),
     ]
 )

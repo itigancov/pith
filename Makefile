@@ -19,7 +19,7 @@ SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/Panel.
 test:
 	swift test
 
-# Restyle timings against the budgets of spec 09; fails on a missed budget.
+# Restyle timings (spec 09) and NoteStore timings (spec 03) against their budgets; fails on a missed budget.
 bench:
 	swift run -c release PithBench
 
