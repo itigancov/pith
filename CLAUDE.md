@@ -21,3 +21,10 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 - All repo content is in English: docs, comments, commit messages, PR descriptions. Conversations may be in any language.
 - Never touch `layoutManager` on `EditorTextView` (it falls back to TextKit 1).
 - Logic lives in the package; `App/` holds only `main.swift`.
+
+## Workflow
+
+- `main` changes only through squash-merged pull requests; never commit on or push to `main` (`.claude/hooks/guard-main.sh` blocks it, a GitHub ruleset rejects it).
+- One ticket = one worktree = one branch = one PR. Start with `claude -w <ticket-slug>` from the repo root; the worktree lives in `.claude/worktrees/<ticket-slug>`.
+- Before opening a PR: `make test` passes, branch rebased on `origin/main`. Open it with `gh pr create`; CI (`.github/workflows/test.yml`) runs `make test`.
+- Merge only when the user asks: `gh pr merge <n> --squash --delete-branch`.

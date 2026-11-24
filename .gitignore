@@ -4,3 +4,5 @@
 DerivedData/
 .DS_Store
 App/Info.plist
+.claude/worktrees/
+.claude/settings.local.json
