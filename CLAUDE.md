@@ -6,13 +6,13 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 
 - `make test` — `swift test` (`Pith` package, Swift Testing)
 - `make build` — xcodegen + xcodebuild of `Pith.app` into `.build/xcode`
-- `make run` — build, then open `Pith.app` with `-PithFixture $(FIXTURE)` (default `Fixtures/Demo.md`, `FIXTURE=<path>` for another text); `CONFIG=Release` for both to check performance by hand
+- `make run` — build, then open `Pith.app` (it shows the Panel; ⌥Space toggles it) with `-PithFixture $(FIXTURE)` (default `Fixtures/Demo.md`, `FIXTURE=<path>` for another text); `CONFIG=Release` for both to check performance by hand
 - `make bench` — restyle timings on a generated 5k-line Note in release (`Sources/PithBench`); fails on a missed budget. `make test` asserts no timings
 
 ## Layout
 
 - `Sources/PithEditor`, `Tests/PithEditorTests` — the core, no dependencies
-- `Sources/PithApp` — AppKit shell (`PithApp.run()`); default isolation MainActor
+- `Sources/PithApp`, `Tests/PithAppTests` — AppKit shell (`PithApp.run()`): Panel, Hotkey, menus, launch flags; default isolation MainActor
 - `App` — Xcode target `Pith`, only `main.swift`; `project.yml` generates `.xcodeproj` (not committed)
 - `Fixtures` — sample texts for `make run`, not bundled
 

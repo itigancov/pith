@@ -2,11 +2,11 @@ import AppKit
 import PithEditor
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var window: NSWindow?
+    private var panelController: PanelController?
     private var editor: EditorTextView?
+    private let hotkeys = HotkeyCenter()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = makeMainMenu()
         applyAppearanceArgument()
 
         let editor = EditorTextView()
@@ -20,27 +20,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editor.textContainerInset = NSSize(width: 16, height: 16)
         editor.allowsUndo = true
         loadFixture(into: editor)
-
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.documentView = editor
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1000),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Pith"
-        window.contentView = scrollView
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(editor)
-        self.window = window
         self.editor = editor
 
-        NSApp.activate(ignoringOtherApps: true)
+        let panel = PanelController(editor: editor, fixedSize: windowSizeArgument())
+        self.panelController = panel
+        NSApp.mainMenu = makeMainMenu()
+
+        hotkeys.onPress = { [weak panel] in panel?.toggle() }
+        hotkeys.register(.default)
+
+        // Every launch shows the Panel, as the Hotkey does.
+        panel.show()
 
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
         if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
@@ -51,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             editor.setSelectedRange(NSRange(location: numbers[0], length: numbers[1]))
             editor.scrollRangeToVisible(editor.selectedRange())
         }
+
+        presentAlertArguments()
 
         if let path = UserDefaults.standard.string(forKey: "PithSnapshot") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -70,16 +62,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithSnapshot <path>` writes a PNG of the window's content and quits: screenshots without screen recording rights.
-    /// `-PithWindowSize "<width> <height>"` sizes the window's content first, for screenshots at a fixed width.
-    private func snapshot(to url: URL) {
-        if let size = UserDefaults.standard.string(forKey: "PithWindowSize")?.split(separator: " ").compactMap({ Double($0) }),
-           size.count == 2, let window, let editor {
-            window.setFrame(window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: NSSize(width: size[0], height: size[1]))), display: true)
-            window.contentView?.layoutSubtreeIfNeeded()
-            editor.scrollRangeToVisible(editor.selectedRange())
+    /// `-PithWindowSize "<width> <height>"` sizes the Panel's content instead of its stored size, without saving it:
+    /// screenshots at a fixed size. The Panel has no title bar, so its content is its whole frame.
+    private func windowSizeArgument() -> CGSize? {
+        guard let size = UserDefaults.standard.string(forKey: "PithWindowSize")?.split(separator: " ").compactMap({ Double($0) }),
+              size.count == 2 else { return nil }
+        return CGSize(width: size[0], height: size[1])
+    }
+
+    /// `-PithCorruptAlert <path>` shows the alert about a damaged notes file set aside at `path`.
+    /// `-PithOpenFailureAlert <reason>` shows the alert about notes that did not open, with Try Again;
+    /// `-PithOpenFailureAlert newerSchema` shows its variant for notes from a newer Pith, with Quit only.
+    private func presentAlertArguments() {
+        guard let panel = panelController else { return }
+        if let path = UserDefaults.standard.string(forKey: "PithCorruptAlert") {
+            panel.presentCorruptionRecoveryAlert(movedFile: URL(fileURLWithPath: path))
         }
-        guard let view = window?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        if let reason = UserDefaults.standard.string(forKey: "PithOpenFailureAlert") {
+            let canRetry = reason != "newerSchema"
+            panel.presentOpenFailureAlert(reason: reason, canRetry: canRetry) {
+                NSLog("Pith: Try Again pressed")
+            }
+        }
+    }
+
+    /// `-PithSnapshot <path>` writes a PNG of the Panel's content and quits: screenshots without screen recording rights.
+    private func snapshot(to url: URL) {
+        guard let view = panelController?.panel.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
@@ -92,8 +101,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default: break
         }
     }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     private func makeMainMenu() -> NSMenu {
         let main = NSMenu()
@@ -148,9 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         debug.addItem(withTitle: "Generate 5k Lines", action: #selector(generateBigNote(_:)), keyEquivalent: "")
 
         let windowMenu = submenu(in: main, title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        NSApp.windowsMenu = windowMenu
+        // The Panel has no Minimize or Close; ticket 10 builds the full menu.
+        let reset = windowMenu.addItem(withTitle: "Reset Panel Size", action: #selector(PanelController.resetPanelFrame(_:)), keyEquivalent: "")
+        reset.target = panelController
 
         return main
     }
