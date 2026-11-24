@@ -74,7 +74,7 @@ public final class NoteStore {
     private static func prepare(path: String, now: @escaping () -> Date) throws -> NoteStore {
         let database = try Database(path: path)
         // The first read of the file: a file that is not a database fails here.
-        try database.query("PRAGMA journal_mode=WAL") { _ in }
+        try database.run("PRAGMA journal_mode=WAL")
         try database.execute("PRAGMA synchronous=NORMAL")
         try database.execute("PRAGMA foreign_keys=ON")
         let verdict = try database.query("PRAGMA quick_check") { $0.text(0) }
@@ -121,11 +121,10 @@ public final class NoteStore {
         try database.query(
             "SELECT id, created_at, updated_at, deleted_at FROM notes WHERE deleted_at IS NULL ORDER BY created_at, rowid"
         ) { row in
-            NoteSummary(
-                id: UUID(uuidString: row.text(0)) ?? UUID(),
-                createdAt: Self.date(row.int(1)), updatedAt: Self.date(row.int(2)),
-                deletedAt: row.optionalInt(3).map(Self.date)
-            )
+            guard let id = UUID(uuidString: row.text(0)) else {
+                throw NoteStoreError.sqlite(code: SQLITE_CORRUPT, message: "unreadable note id \(row.text(0))")
+            }
+            return NoteSummary(id: id, createdAt: row.date(1), updatedAt: row.date(2), deletedAt: row.optionalDate(3))
         }
     }
 
@@ -136,7 +135,7 @@ public final class NoteStore {
         ) { row in
             Note(
                 id: id, text: row.text(0),
-                createdAt: Self.date(row.int(1)), updatedAt: Self.date(row.int(2)), deletedAt: row.optionalInt(3).map(Self.date),
+                createdAt: row.date(1), updatedAt: row.date(2), deletedAt: row.optionalDate(3),
                 selection: NoteSelection(location: Int(row.int(4)), length: Int(row.int(5))), scrollOffset: row.double(6)
             )
         }.first
@@ -146,14 +145,14 @@ public final class NoteStore {
     public func insert(text: String, selection: NoteSelection, scrollOffset: Double) throws -> Note {
         let id = UUID()
         let time = Self.millis(now())
-        try database.query(
+        try database.run(
             """
             INSERT INTO notes(id, text, created_at, updated_at, sel_location, sel_length, scroll_offset)
             VALUES(?, ?, ?, ?, ?, ?, ?)
             """,
             [.text(id.uuidString), .text(text), .int(time), .int(time),
              .int(Int64(selection.location)), .int(Int64(selection.length)), .double(scrollOffset)]
-        ) { _ in }
+        )
         return Note(
             id: id, text: text, createdAt: Self.date(time), updatedAt: Self.date(time), deletedAt: nil,
             selection: selection, scrollOffset: scrollOffset
@@ -161,23 +160,23 @@ public final class NoteStore {
     }
 
     public func updateText(id: UUID, text: String) throws {
-        try database.query(
+        try database.run(
             "UPDATE notes SET text = ?, updated_at = ? WHERE id = ?",
             [.text(text), .int(Self.millis(now())), .text(id.uuidString)]
-        ) { _ in }
+        )
     }
 
     /// Leaves `updatedAt` alone: moving the cursor is not an edit.
     public func updateViewState(id: UUID, selection: NoteSelection, scrollOffset: Double) throws {
-        try database.query(
+        try database.run(
             "UPDATE notes SET sel_location = ?, sel_length = ?, scroll_offset = ? WHERE id = ?",
             [.int(Int64(selection.location)), .int(Int64(selection.length)), .double(scrollOffset), .text(id.uuidString)]
-        ) { _ in }
+        )
     }
 
     /// For a Note that was left empty. Moving a Note to the Trash is not here.
     public func deletePermanently(id: UUID) throws {
-        try database.query("DELETE FROM notes WHERE id = ?", [.text(id.uuidString)]) { _ in }
+        try database.run("DELETE FROM notes WHERE id = ?", [.text(id.uuidString)])
     }
 
     // MARK: Helpers

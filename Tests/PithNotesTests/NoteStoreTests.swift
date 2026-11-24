@@ -58,6 +58,11 @@ import Testing
         #expect(try store.note(id: trashed.id)?.deletedAt == Date(timeIntervalSince1970: 1))
     }
 
+    @Test func rowWithAnUnreadableIDIsAnErrorNotARandomID() throws {
+        try store.execute("INSERT INTO notes(id, text, created_at, updated_at) VALUES('not-a-uuid', '', 0, 0)")
+        #expect(throws: NoteStoreError.self) { try store.stack() }
+    }
+
     @Test func stackSummariesCarryDatesOnly() throws {
         let note = try store.insert(text: "a", selection: noSelection, scrollOffset: 0)
         #expect(try store.stack() == [NoteSummary(id: note.id, createdAt: note.createdAt, updatedAt: note.updatedAt, deletedAt: nil)])

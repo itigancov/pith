@@ -40,6 +40,8 @@ struct Row {
     func double(_ column: Int32) -> Double { sqlite3_column_double(statement, column) }
     func isNull(_ column: Int32) -> Bool { sqlite3_column_type(statement, column) == SQLITE_NULL }
     func optionalInt(_ column: Int32) -> Int64? { isNull(column) ? nil : int(column) }
+    func date(_ column: Int32) -> Date { Date(timeIntervalSince1970: Double(int(column)) / 1000) }
+    func optionalDate(_ column: Int32) -> Date? { isNull(column) ? nil : date(column) }
 
     func text(_ column: Int32) -> String {
         guard let bytes = sqlite3_column_text(statement, column) else { return "" }
@@ -81,7 +83,7 @@ final class Database {
 
     /// Runs one statement with binds and maps every row it returns.
     @discardableResult
-    func query<T>(_ sql: String, _ binds: [Bind] = [], _ map: (Row) -> T) throws -> [T] {
+    func query<T>(_ sql: String, _ binds: [Bind] = [], _ map: (Row) throws -> T) throws -> [T] {
         let statement = try prepared(sql)
         defer {
             sqlite3_reset(statement)
@@ -101,13 +103,18 @@ final class Database {
         while true {
             let code = sqlite3_step(statement)
             if code == SQLITE_ROW {
-                rows.append(map(Row(statement: statement)))
+                rows.append(try map(Row(statement: statement)))
             } else if code == SQLITE_DONE {
                 return rows
             } else {
                 throw error(code)
             }
         }
+    }
+
+    /// Runs one statement that returns no rows: INSERT, UPDATE, DELETE.
+    func run(_ sql: String, _ binds: [Bind] = []) throws {
+        try query(sql, binds) { _ in }
     }
 
     func queryInt(_ sql: String) throws -> Int {

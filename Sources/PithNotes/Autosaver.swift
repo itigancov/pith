@@ -74,8 +74,7 @@ public final class Autosaver {
 
     /// Makes `id` the open Note, or a Blank for `nil`. Whatever is still dirty is dropped: `flush()` first.
     public func open(_ id: UUID?) {
-        timer?.cancel()
-        timer = nil
+        cancelTimer()
         noteID = id
         dirtyText = nil
         dirtyViewState = false
@@ -85,8 +84,7 @@ public final class Autosaver {
 
     public func textDidChange(_ text: String) {
         dirtyText = text
-        timer?.cancel()
-        timer = scheduler.schedule(after: debounce) { [weak self] in self?.debounceFired() }
+        scheduleDebounce()
     }
 
     /// Remembers the cursor and the scroll position; they are written by the next `flush()`, not by the timer.
@@ -99,9 +97,18 @@ public final class Autosaver {
     /// Writes everything dirty now. Returns false when a write failed: the state stays dirty.
     @discardableResult
     public func flush() -> Bool {
+        cancelTimer()
+        return write(includingViewState: true)
+    }
+
+    private func scheduleDebounce() {
+        cancelTimer()
+        timer = scheduler.schedule(after: debounce) { [weak self] in self?.debounceFired() }
+    }
+
+    private func cancelTimer() {
         timer?.cancel()
         timer = nil
-        return write(includingViewState: true)
     }
 
     private func debounceFired() {
@@ -118,9 +125,7 @@ public final class Autosaver {
         } catch {
             report(error)
             // Retry on the next debounce, unless the user's next edit or a flush comes first.
-            if timer == nil {
-                timer = scheduler.schedule(after: debounce) { [weak self] in self?.debounceFired() }
-            }
+            if timer == nil { scheduleDebounce() }
             return false
         }
     }
