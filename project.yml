@@ -1,36 +1,40 @@
-name: PithDemo
+name: Pith
 options:
-  bundleIdPrefix: local.pith
+  bundleIdPrefix: io.github.itigancov
   deploymentTarget:
     macOS: "14.0"
 settings:
   base:
-    SWIFT_VERSION: "6.0"
+    SWIFT_VERSION: "6"
     SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
 packages:
-  PithEditor:
+  Pith:
     path: .
 targets:
-  PithDemo:
+  Pith:
     type: application
     platform: macOS
     sources:
-      - path: Demo
-        excludes: [Fixture.md]
-      - path: Demo/Fixture.md
-        buildPhase: resources
+      - App
     dependencies:
-      - package: PithEditor
+      - package: Pith
+        product: PithApp
     info:
-      path: Demo/Info.plist
+      path: App/Info.plist
       properties:
         CFBundleName: Pith
         CFBundleDisplayName: Pith
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSPrincipalClass: NSApplication
         LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: local.pith.demo
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.itigancov.pith
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
         ENABLE_APP_SANDBOX: NO
