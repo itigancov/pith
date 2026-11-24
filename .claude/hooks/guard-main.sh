@@ -25,8 +25,14 @@ if printf '%s' "$cmd" | grep -Eq 'git( +-[^ ]+( +[^ -][^ ]*)?)* +commit\b' && [ 
   exit 2
 fi
 
+# A push targets main when a refspec names main, it pushes every branch,
+# or it runs on main without a refspec (`git push`, `git push origin`).
 if printf '%s' "$cmd" | grep -Eq 'git( +-[^ ]+( +[^ -][^ ]*)?)* +push\b'; then
-  if [ "$branch" = main ] || printf '%s' "$cmd" | grep -Eq '(^|[ :/])main( |$)'; then
+  args=$(printf '%s' "$cmd" | sed -nE 's/.*git( +-[^ ]+( +[^ -][^ ]*)?)* +push//p' | sed -E 's/[&;|].*//')
+  refs=$(printf '%s' "$args" | tr ' ' '\n' | grep -v '^-' | grep -v '^$' | tail -n +2)
+  if printf '%s' "$refs" | grep -Eq '(^|[:/+])main$' ||
+     printf '%s' "$args" | grep -Eq '(^| )--(all|mirror)( |$)' ||
+     { [ "$branch" = main ] && [ -z "$refs" ]; }; then
     echo "Blocked: no pushes to main. Push the feature branch and open a pull request." >&2
     exit 2
   fi
