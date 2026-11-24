@@ -2,11 +2,11 @@ import AppKit
 import PithEditor
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var window: NSWindow?
+    private var panelController: PanelController?
     private var editor: EditorTextView?
+    private let hotkeys = HotkeyCenter()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = makeMainMenu()
         applyAppearanceArgument()
 
         let editor = EditorTextView()
@@ -20,28 +20,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editor.textContainerInset = NSSize(width: 16, height: 16)
         editor.allowsUndo = true
         loadFixture(into: editor)
-
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.documentView = editor
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1000),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Pith"
-        window.contentView = scrollView
-        applyWindowSizeArgument(to: window)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(editor)
-        self.window = window
         self.editor = editor
 
-        NSApp.activate(ignoringOtherApps: true)
+        let panel = PanelController(editor: editor, fixedSize: windowSizeArgument())
+        self.panelController = panel
+        NSApp.mainMenu = makeMainMenu()
+
+        hotkeys.onPress = { [weak panel] in panel?.toggle() }
+        hotkeys.register(.default)
+
+        // Every launch shows the Panel, as the Hotkey does.
+        panel.show()
 
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
         if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
@@ -53,7 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             editor.scrollRangeToVisible(editor.selectedRange())
         }
 
-        showSurface(in: window, editor: editor)
+        presentAlertArguments()
+
+        showSurface(in: panel.panel, editor: editor)
     }
 
     /// `-PithFixture <path>` starts with that UTF-8 file's text; without it, or if it cannot be read, the editor is empty.
@@ -66,12 +57,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithWindowSize "<width> <height>"` sizes the window's content at launch, for screenshots at a fixed size.
-    private func applyWindowSizeArgument(to window: NSWindow) {
+    /// `-PithWindowSize "<width> <height>"` sizes the Panel's content instead of its stored size, without saving it:
+    /// screenshots at a fixed size. The Panel has no title bar, so its content is its whole frame.
+    private func windowSizeArgument() -> CGSize? {
         guard let size = UserDefaults.standard.string(forKey: "PithWindowSize")?.split(separator: " ").compactMap({ Double($0) }),
-              size.count == 2 else { return }
-        window.setContentSize(NSSize(width: size[0], height: size[1]))
-        window.contentView?.layoutSubtreeIfNeeded()
+              size.count == 2 else { return nil }
+        return CGSize(width: size[0], height: size[1])
+    }
+
+    /// `-PithCorruptAlert <path>` shows the alert about a damaged notes file set aside at `path`.
+    /// `-PithOpenFailureAlert <reason>` shows the alert about notes that did not open, with Try Again;
+    /// `-PithOpenFailureAlert newerSchema` shows its variant for notes from a newer Pith, with Quit only.
+    private func presentAlertArguments() {
+        guard let panel = panelController else { return }
+        if let path = UserDefaults.standard.string(forKey: "PithCorruptAlert") {
+            panel.presentCorruptionRecoveryAlert(movedFile: URL(fileURLWithPath: path))
+        }
+        if let reason = UserDefaults.standard.string(forKey: "PithOpenFailureAlert") {
+            let canRetry = reason != "newerSchema"
+            panel.presentOpenFailureAlert(reason: reason, canRetry: canRetry) {
+                NSLog("Pith: Try Again pressed")
+            }
+        }
     }
 
     /// What `-PithShow` opens for `make shots`. `window` opens nothing; a surface that adds a popup window sets `opensPopup`.
@@ -91,9 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
             var attempts = 0
+            let panelNumber = window.windowNumber
             let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
                 attempts += 1
-                let shots = Self.visibleShots()
+                let shots = Self.visibleShots(panel: panelNumber)
                 // Wait until the surface is on screen; give up after 8 s and report what there is.
                 guard attempts >= 32 || (shots.contains { $0.role == "window" } && (!surface.opensPopup || shots.contains { $0.role == "menu" })) else { return }
                 timer.invalidate()
@@ -126,14 +134,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The visible windows of this process. Layer 0 is the window; anything above it is a popup (a menu sits on layer 101).
-    private nonisolated static func visibleShots() -> [(role: String, id: Int)] {
+    /// The visible windows of this process: the Panel is the window (its sheet shows in its capture), anything at the
+    /// popup menu level or above is a menu (a menu sits on layer 101).
+    private nonisolated static func visibleShots(panel: Int) -> [(role: String, id: Int)] {
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
         let pid = Int(ProcessInfo.processInfo.processIdentifier)
+        let menuLayer = Int(CGWindowLevelForKey(.popUpMenuWindow))
         return list.compactMap { info in
             guard info[kCGWindowOwnerPID as String] as? Int == pid,
                   let id = info[kCGWindowNumber as String] as? Int, let layer = info[kCGWindowLayer as String] as? Int else { return nil }
-            return (layer == 0 ? "window" : "menu", id)
+            if id == panel { return ("window", id) }
+            return layer >= menuLayer ? ("menu", id) : nil
         }
     }
 
@@ -145,8 +156,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default: break
         }
     }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     private func makeMainMenu() -> NSMenu {
         let main = NSMenu()
@@ -201,9 +210,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         debug.addItem(withTitle: "Generate 5k Lines", action: #selector(generateBigNote(_:)), keyEquivalent: "")
 
         let windowMenu = submenu(in: main, title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        NSApp.windowsMenu = windowMenu
+        // The Panel has no Minimize or Close; ticket 10 builds the full menu.
+        let reset = windowMenu.addItem(withTitle: "Reset Panel Size", action: #selector(PanelController.resetPanelFrame(_:)), keyEquivalent: "")
+        reset.target = panelController
 
         return main
     }

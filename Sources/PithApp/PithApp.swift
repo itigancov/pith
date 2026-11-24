@@ -6,7 +6,8 @@ public enum PithApp {
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
-        app.setActivationPolicy(.regular)
+        // No Dock icon; the hidden main menu still handles key equivalents.
+        app.setActivationPolicy(.accessory)
         app.run()
     }
 }

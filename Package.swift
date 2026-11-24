@@ -24,6 +24,10 @@ let package = Package(
         .executableTarget(name: "PithBench", dependencies: ["PithEditor", "PithNotes"]),
         .testTarget(name: "PithEditorTests", dependencies: ["PithEditor"]),
         .testTarget(name: "PithNotesTests", dependencies: ["PithNotes"]),
-        .testTarget(name: "PithAppTests", dependencies: ["PithApp"]),
+        .testTarget(
+            name: "PithAppTests",
+            dependencies: ["PithApp"],
+            swiftSettings: [.defaultIsolation(MainActor.self)]
+        ),
     ]
 )
