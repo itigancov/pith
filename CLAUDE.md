@@ -14,8 +14,8 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 
 - `Sources/PithEditor`, `Tests/PithEditorTests` — the core, no dependencies
 - `Sources/PithNotes`, `Tests/PithNotesTests` — `Note`, `NoteStore` (SQLite), `Autosaver`; no AppKit, not yet used by `PithApp`
-- `Sources/PithApp` — AppKit shell (`PithApp.run()`); default isolation MainActor
-- `App` — Xcode target `Pith`, only `main.swift`; `project.yml` generates `.xcodeproj` (not committed)
+- `Sources/PithApp`, `Tests/PithAppTests` — AppKit shell (`PithApp.run()`); default isolation MainActor
+- `App` — Xcode target `Pith`, `main.swift` and `AppIcon.icon` (Icon Composer); `project.yml` generates `.xcodeproj` (not committed)
 - `Fixtures` — sample texts for `make run` (`Demo.md`) and `make shots` (`Panel.md`, the text of the Main artboard), not bundled
 - `scripts` — `shots.sh` behind `make shots`
 
@@ -23,7 +23,7 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 
 - All repo content is in English: docs, comments, commit messages, PR descriptions. Conversations may be in any language.
 - Never touch `layoutManager` on `EditorTextView` (it falls back to TextKit 1).
-- Logic lives in the package; `App/` holds only `main.swift`.
+- Logic lives in the package; `App/` holds only `main.swift` and the app icon.
 
 ## Workflow
 
