@@ -74,20 +74,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView?.layoutSubtreeIfNeeded()
     }
 
+    /// What `-PithShow` opens for `make shots`. `window` opens nothing; a surface that adds a popup window sets `opensPopup`.
+    private enum Surface: String {
+        case window
+        case contextMenu = "context-menu"
+
+        var opensPopup: Bool { self != .window }
+    }
+
     /// `-PithShow window|context-menu` opens that surface for `make shots`; `window` (the default) opens nothing.
     /// `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, editor: EditorTextView) {
         let defaults = UserDefaults.standard
+        let surface = defaults.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
         window.display()
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
-            let needsMenu = defaults.string(forKey: "PithShow") == "context-menu"
             var attempts = 0
             let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
                 attempts += 1
                 let shots = Self.visibleShots()
-                // Wait until the surface is on screen; give up after 10 s and report what there is.
-                guard attempts >= 40 || (shots.contains { $0.role == "window" } && (!needsMenu || shots.contains { $0.role == "menu" })) else { return }
+                // Wait until the surface is on screen; give up after 8 s and report what there is.
+                guard attempts >= 32 || (shots.contains { $0.role == "window" } && (!surface.opensPopup || shots.contains { $0.role == "menu" })) else { return }
                 timer.invalidate()
                 for shot in shots { print("PithShot \(shot.role) \(shot.id)") }
                 print("PithShot done")
@@ -97,8 +105,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // After the window is on screen: `popUp` started during launch can come up without anything on screen.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            switch defaults.string(forKey: "PithShow") ?? "window" {
-            case "context-menu":
+            switch surface {
+            case .contextMenu:
                 // On the selection if there is one: a right click elsewhere moves it. Otherwise the middle of the visible text.
                 var point = NSPoint(x: editor.visibleRect.midX, y: editor.visibleRect.midY)
                 if editor.selectedRange().length > 0 {
@@ -113,12 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let event, let menu = editor.menu(for: event) {
                     menu.popUp(positioning: nil, at: point, in: editor)
                 }
-            default: break
+            case .window: break
             }
         }
     }
 
-    /// The visible windows of this process. Layer 0 is the window; popup menus sit on a higher layer (101).
+    /// The visible windows of this process. Layer 0 is the window; anything above it is a popup (a menu sits on layer 101).
     private nonisolated static func visibleShots() -> [(role: String, id: Int)] {
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
         let pid = Int(ProcessInfo.processInfo.processIdentifier)

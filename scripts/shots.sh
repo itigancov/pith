@@ -42,12 +42,12 @@ for theme in light dark; do
         ${args[@]+"${args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
     pid=$!
 
-    for _ in $(seq 150); do
+    for _ in $(seq 100); do
         grep -q '^PithShot done' "$log" && break
         sleep 0.1
     done
     if ! grep -q '^PithShot done' "$log"; then
-        echo "shots: Pith did not report its windows within 15 s" >&2
+        echo "shots: Pith did not report its windows within 10 s" >&2
         exit 1
     fi
 
