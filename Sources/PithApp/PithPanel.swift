@@ -136,8 +136,9 @@ final class PanelContentView: NSView {
     /// or below the last line, and not on a scroller.
     func isDragZone(atWindowPoint point: NSPoint) -> Bool {
         let local = convert(point, from: nil)
-        guard bounds.contains(local) else { return false }
-        if hitTest(local) is NSScroller { return false }
+        // The strip along the edges belongs to the system's resizing.
+        guard innerBounds.contains(local) else { return false }
+        if isOnScroller(atWindowPoint: point) { return false }
         let inEditor = editor.convert(point, from: nil)
         let visible = editor.visibleRect
         guard visible.contains(inEditor) else { return true }
@@ -145,6 +146,18 @@ final class PanelContentView: NSView {
         if inEditor.x < inset.width || inEditor.x > editor.bounds.width - inset.width { return true }
         if inEditor.y < inset.height { return true }
         return inEditor.y > textBottom
+    }
+
+    /// Width of the edge strip where a press resizes the Panel rather than moving it.
+    private static let resizeBorder: CGFloat = 6
+
+    /// The bounds without the resizing strip.
+    private var innerBounds: NSRect { bounds.insetBy(dx: Self.resizeBorder, dy: Self.resizeBorder) }
+
+    private func isOnScroller(atWindowPoint point: NSPoint) -> Bool {
+        // `hitTest` takes a point in the superview's coordinates.
+        guard let superview else { return false }
+        return hitTest(superview.convert(point, from: nil)) is NSScroller
     }
 
     /// The bottom of the last laid-out line in the editor's coordinates; the first line's height for an empty Note.
@@ -174,7 +187,10 @@ final class PanelContentView: NSView {
     }
 
     private func updateCursor(for event: NSEvent) {
-        if isDragZone(atWindowPoint: event.locationInWindow) || hitTest(convert(event.locationInWindow, from: nil)) is NSScroller {
+        let point = event.locationInWindow
+        let overText = innerBounds.contains(convert(point, from: nil))
+            && !isOnScroller(atWindowPoint: point) && !isDragZone(atWindowPoint: point)
+        if !overText {
             NSCursor.arrow.set()
         } else if NSCursor.current != NSCursor.pointingHand {
             // The editor shows a pointing hand over urls itself.
