@@ -1,0 +1,3 @@
+import PithApp
+
+PithApp.run()

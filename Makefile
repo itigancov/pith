@@ -1,7 +1,14 @@
 DERIVED := .build/xcode
 # `make run CONFIG=Release` for the manual performance check.
 CONFIG ?= Debug
-APP := $(DERIVED)/Build/Products/$(CONFIG)/PithDemo.app
+APP := $(DERIVED)/Build/Products/$(CONFIG)/Pith.app
+# `make run FIXTURE=/path/to/note.md` opens another text.
+FIXTURE ?= $(CURDIR)/Fixtures/Demo.md
+
+# Release is universal; the default destination would build only the host's architecture.
+ifeq ($(CONFIG),Release)
+DESTINATION := -destination 'generic/platform=macOS'
+endif
 
 .PHONY: test bench build run
 
@@ -14,8 +21,9 @@ bench:
 
 build:
 	xcodegen generate
-	xcodebuild -project PithDemo.xcodeproj -scheme PithDemo -configuration $(CONFIG) \
-		-derivedDataPath $(DERIVED) build
+	xcodebuild -project Pith.xcodeproj -scheme Pith -configuration $(CONFIG) \
+		-derivedDataPath $(DERIVED) $(DESTINATION) build
 
+# `-n` so the arguments arrive even if the app is already running.
 run: build
-	open $(APP)
+	open -n $(APP) --args -PithFixture "$(FIXTURE)"

@@ -1,7 +1,6 @@
 import AppKit
 import PithEditor
 
-@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var editor: EditorTextView?
@@ -20,10 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editor.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainerInset = NSSize(width: 16, height: 16)
         editor.allowsUndo = true
-        if let url = Bundle.main.url(forResource: "Fixture", withExtension: "md"),
-           let fixture = try? String(contentsOf: url, encoding: .utf8) {
-            editor.string = fixture
-        }
+        loadFixture(into: editor)
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -61,6 +57,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.snapshot(to: URL(fileURLWithPath: path))
                 NSApp.terminate(nil)
             }
+        }
+    }
+
+    /// `-PithFixture <path>` starts with that UTF-8 file's text; without it, or if it cannot be read, the editor is empty.
+    private func loadFixture(into editor: EditorTextView) {
+        guard let path = UserDefaults.standard.string(forKey: "PithFixture") else { return }
+        do {
+            editor.string = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+        } catch {
+            NSLog("Pith: cannot read fixture %@: %@", path, String(describing: error))
         }
     }
 

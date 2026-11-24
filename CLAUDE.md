@@ -4,18 +4,20 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 
 ## Commands
 
-- `make test` — `swift test` (`PithEditor` package, Swift Testing)
-- `make build` — xcodegen + xcodebuild of the demo into `.build/xcode`
-- `make run` — build, then open `PithDemo.app`; `CONFIG=Release` for both to check performance by hand
+- `make test` — `swift test` (`Pith` package, Swift Testing)
+- `make build` — xcodegen + xcodebuild of `Pith.app` into `.build/xcode`
+- `make run` — build, then open `Pith.app` with `-PithFixture $(FIXTURE)` (default `Fixtures/Demo.md`, `FIXTURE=<path>` for another text); `CONFIG=Release` for both to check performance by hand
 - `make bench` — restyle timings on a generated 5k-line Note in release (`Sources/PithBench`); fails on a missed budget. `make test` asserts no timings
 
 ## Layout
 
 - `Sources/PithEditor`, `Tests/PithEditorTests` — the core, no dependencies
-- `Demo` — thin AppKit app; `project.yml` generates `.xcodeproj` (not committed)
+- `Sources/PithApp` — AppKit shell (`PithApp.run()`); default isolation MainActor
+- `App` — Xcode target `Pith`, only `main.swift`; `project.yml` generates `.xcodeproj` (not committed)
+- `Fixtures` — sample texts for `make run`, not bundled
 
 ## Rules
 
 - All repo content is in English: docs, comments, commit messages, PR descriptions. Conversations may be in any language.
 - Never touch `layoutManager` on `EditorTextView` (it falls back to TextKit 1).
-- Logic lives in the package; the demo is throwaway.
+- Logic lives in the package; `App/` holds only `main.swift`.
