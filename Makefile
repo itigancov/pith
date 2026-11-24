@@ -10,7 +10,11 @@ ifeq ($(CONFIG),Release)
 DESTINATION := -destination 'generic/platform=macOS'
 endif
 
-.PHONY: test bench build run
+# `make shots`: SURFACE=context-menu for the open menu, FIXTURE=<path> for another text, OUT=<folder> for the PNGs.
+SURFACE ?= window
+SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/Panel.md,$(FIXTURE))
+
+.PHONY: test bench build run shots
 
 test:
 	swift test
@@ -27,3 +31,7 @@ build:
 # `-n` so the arguments arrive even if the app is already running.
 run: build
 	open -n $(APP) --args -PithFixture "$(FIXTURE)"
+
+# Light and dark PNGs of the real window, see scripts/shots.sh.
+shots: build
+	SURFACE="$(SURFACE)" FIXTURE="$(SHOTS_FIXTURE)" OUT="$(OUT)" scripts/shots.sh "$(APP)"
