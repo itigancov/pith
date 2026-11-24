@@ -28,5 +28,5 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 
 - `main` changes only through squash-merged pull requests; never commit on or push to `main` (`.claude/hooks/guard-main.sh` blocks it, a GitHub ruleset rejects it).
 - One ticket = one worktree = one branch = one PR. Start with `claude -w <ticket-slug>` from the repo root; the worktree lives in `.claude/worktrees/<ticket-slug>`.
-- Before opening a PR: `make test` passes, branch rebased on `origin/main`. Open it with `gh pr create`; CI (`.github/workflows/test.yml`) runs `make test`.
+- Before opening a PR: `make test` passes, branch rebased on `origin/main`. Open it with `gh pr create`; CI (`.github/workflows/test.yml`) runs `make test` and `make build` on the `xcode-27` runner.
 - Merge only when the user asks: `gh pr merge <n> --squash --delete-branch`.
