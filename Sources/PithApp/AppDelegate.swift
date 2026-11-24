@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.title = "Pith"
         window.contentView = scrollView
+        applyWindowSizeArgument(to: window)
         window.center()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(editor)
@@ -52,12 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             editor.scrollRangeToVisible(editor.selectedRange())
         }
 
-        if let path = UserDefaults.standard.string(forKey: "PithSnapshot") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                self?.snapshot(to: URL(fileURLWithPath: path))
-                NSApp.terminate(nil)
-            }
-        }
+        showSurface(in: window, editor: editor)
     }
 
     /// `-PithFixture <path>` starts with that UTF-8 file's text; without it, or if it cannot be read, the editor is empty.
@@ -70,18 +66,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithSnapshot <path>` writes a PNG of the window's content and quits: screenshots without screen recording rights.
-    /// `-PithWindowSize "<width> <height>"` sizes the window's content first, for screenshots at a fixed width.
-    private func snapshot(to url: URL) {
-        if let size = UserDefaults.standard.string(forKey: "PithWindowSize")?.split(separator: " ").compactMap({ Double($0) }),
-           size.count == 2, let window, let editor {
-            window.setFrame(window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: NSSize(width: size[0], height: size[1]))), display: true)
-            window.contentView?.layoutSubtreeIfNeeded()
-            editor.scrollRangeToVisible(editor.selectedRange())
+    /// `-PithWindowSize "<width> <height>"` sizes the window's content at launch, for screenshots at a fixed size.
+    private func applyWindowSizeArgument(to window: NSWindow) {
+        guard let size = UserDefaults.standard.string(forKey: "PithWindowSize")?.split(separator: " ").compactMap({ Double($0) }),
+              size.count == 2 else { return }
+        window.setContentSize(NSSize(width: size[0], height: size[1]))
+        window.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    /// `-PithShow window|context-menu` opens that surface for `make shots`; `window` (the default) opens nothing.
+    /// `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
+    private func showSurface(in window: NSWindow, editor: EditorTextView) {
+        let defaults = UserDefaults.standard
+        window.display()
+        if defaults.bool(forKey: "PithShots") {
+            // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
+            let needsMenu = defaults.string(forKey: "PithShow") == "context-menu"
+            var attempts = 0
+            let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
+                attempts += 1
+                let shots = Self.visibleShots()
+                // Wait until the surface is on screen; give up after 10 s and report what there is.
+                guard attempts >= 40 || (shots.contains { $0.role == "window" } && (!needsMenu || shots.contains { $0.role == "menu" })) else { return }
+                timer.invalidate()
+                for shot in shots { print("PithShot \(shot.role) \(shot.id)") }
+                print("PithShot done")
+                fflush(stdout)
+            }
+            RunLoop.main.add(timer, forMode: .common)
         }
-        guard let view = window?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        // After the window is on screen: `popUp` started during launch can come up without anything on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            switch defaults.string(forKey: "PithShow") ?? "window" {
+            case "context-menu":
+                // On the selection if there is one: a right click elsewhere moves it. Otherwise the middle of the visible text.
+                var point = NSPoint(x: editor.visibleRect.midX, y: editor.visibleRect.midY)
+                if editor.selectedRange().length > 0 {
+                    let onScreen = editor.firstRect(forCharacterRange: editor.selectedRange(), actualRange: nil)
+                    let inWindow = window.convertFromScreen(NSRect(x: onScreen.midX, y: onScreen.midY, width: 0, height: 0)).origin
+                    point = editor.convert(inWindow, from: nil)
+                }
+                let event = NSEvent.mouseEvent(
+                    with: .rightMouseDown, location: editor.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+                )
+                if let event, let menu = editor.menu(for: event) {
+                    menu.popUp(positioning: nil, at: point, in: editor)
+                }
+            default: break
+            }
+        }
+    }
+
+    /// The visible windows of this process. Layer 0 is the window; popup menus sit on a higher layer (101).
+    private nonisolated static func visibleShots() -> [(role: String, id: Int)] {
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let pid = Int(ProcessInfo.processInfo.processIdentifier)
+        return list.compactMap { info in
+            guard info[kCGWindowOwnerPID as String] as? Int == pid,
+                  let id = info[kCGWindowNumber as String] as? Int, let layer = info[kCGWindowLayer as String] as? Int else { return nil }
+            return (layer == 0 ? "window" : "menu", id)
+        }
     }
 
     /// `-PithAppearance light|dark` forces an appearance; without it the app follows the system.
