@@ -1,7 +1,9 @@
 import AppKit
 import PithEditor
+import PithNotes
 
-// Restyle timings of `Styler` over a plain `NSTextStorage` on the generated 5k-line Note (spec 09).
+// Restyle timings of `Styler` over a plain `NSTextStorage` on the generated 5k-line Note (spec 09),
+// and the storage timings of `NoteStore` on the same Note in a database file (spec 03).
 // Run in release: `make bench`. Exits with 1 when a budget is missed.
 // Budgets are checked on wall time; CPU time of the thread is printed beside it, since it barely moves
 // when other processes load the machine.
@@ -176,6 +178,34 @@ for (name, command, selection) in commands {
 }
 
 report("BlockScanner.scan of the Note", (0..<31).map { _ in timed { _ = BlockScanner.scan(storage.string) } })
+
+// Storage: a database file in a temporary directory (WAL), the same Note.
+do {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("pith-bench-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let (store, _) = try NoteStore.open(at: .file(directory.appendingPathComponent("notes.sqlite")))
+    let stored = try store.insert(text: note, selection: NoteSelection(location: 0, length: 0), scrollOffset: 0)
+
+    var saves: [Sample] = []
+    var opens: [Sample] = []
+    for round in 0..<(warmup + 31) {
+        // A different text each time, as typing makes it.
+        let edited = note + String(repeating: "a", count: round % 7)
+        var failure: Error?
+        let save = timed { do { try store.updateText(id: stored.id, text: edited) } catch { failure = error } }
+        var read: Note?
+        let open = timed { do { read = try store.note(id: stored.id) } catch { failure = error } }
+        if let failure { fatalError("storage failed: \(failure)") }
+        precondition(read?.text == edited)
+        if round >= warmup {
+            saves.append(save)
+            opens.append(open)
+        }
+    }
+    report("autosave of the Note (updateText)", saves, median: 5)
+    report("open the Note (note(id:))", opens, median: 16)
+}
+print()
 
 if missed {
     print("\nA budget is missed.")

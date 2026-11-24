@@ -44,12 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         presentAlertArguments()
 
-        if let path = UserDefaults.standard.string(forKey: "PithSnapshot") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                self?.snapshot(to: URL(fileURLWithPath: path))
-                NSApp.terminate(nil)
-            }
-        }
+        showSurface(in: panel.panel, editor: editor)
     }
 
     /// `-PithFixture <path>` starts with that UTF-8 file's text; without it, or if it cannot be read, the editor is empty.
@@ -86,11 +81,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithSnapshot <path>` writes a PNG of the Panel's content and quits: screenshots without screen recording rights.
-    private func snapshot(to url: URL) {
-        guard let view = panelController?.panel.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    /// What `-PithShow` opens for `make shots`. `window` opens nothing; a surface that adds a popup window sets `opensPopup`.
+    private enum Surface: String {
+        case window
+        case contextMenu = "context-menu"
+
+        var opensPopup: Bool { self != .window }
+    }
+
+    /// `-PithShow window|context-menu` opens that surface for `make shots`; `window` (the default) opens nothing.
+    /// `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
+    private func showSurface(in window: NSWindow, editor: EditorTextView) {
+        let defaults = UserDefaults.standard
+        let surface = defaults.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
+        window.display()
+        if defaults.bool(forKey: "PithShots") {
+            // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
+            var attempts = 0
+            let panelNumber = window.windowNumber
+            let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
+                attempts += 1
+                let shots = Self.visibleShots(panel: panelNumber)
+                // Wait until the surface is on screen; give up after 8 s and report what there is.
+                guard attempts >= 32 || (shots.contains { $0.role == "window" } && (!surface.opensPopup || shots.contains { $0.role == "menu" })) else { return }
+                timer.invalidate()
+                for shot in shots { print("PithShot \(shot.role) \(shot.id)") }
+                print("PithShot done")
+                fflush(stdout)
+            }
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        // After the window is on screen: `popUp` started during launch can come up without anything on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            switch surface {
+            case .contextMenu:
+                // On the selection if there is one: a right click elsewhere moves it. Otherwise the middle of the visible text.
+                var point = NSPoint(x: editor.visibleRect.midX, y: editor.visibleRect.midY)
+                if editor.selectedRange().length > 0 {
+                    let onScreen = editor.firstRect(forCharacterRange: editor.selectedRange(), actualRange: nil)
+                    let inWindow = window.convertFromScreen(NSRect(x: onScreen.midX, y: onScreen.midY, width: 0, height: 0)).origin
+                    point = editor.convert(inWindow, from: nil)
+                }
+                let event = NSEvent.mouseEvent(
+                    with: .rightMouseDown, location: editor.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+                )
+                if let event, let menu = editor.menu(for: event) {
+                    menu.popUp(positioning: nil, at: point, in: editor)
+                }
+            case .window: break
+            }
+        }
+    }
+
+    /// The visible windows of this process: the Panel is the window (its sheet shows in its capture), anything at the
+    /// popup menu level or above is a menu (a menu sits on layer 101).
+    private nonisolated static func visibleShots(panel: Int) -> [(role: String, id: Int)] {
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let pid = Int(ProcessInfo.processInfo.processIdentifier)
+        let menuLayer = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        return list.compactMap { info in
+            guard info[kCGWindowOwnerPID as String] as? Int == pid,
+                  let id = info[kCGWindowNumber as String] as? Int, let layer = info[kCGWindowLayer as String] as? Int else { return nil }
+            if id == panel { return ("window", id) }
+            return layer >= menuLayer ? ("menu", id) : nil
+        }
     }
 
     /// `-PithAppearance light|dark` forces an appearance; without it the app follows the system.

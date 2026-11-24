@@ -1,0 +1,33 @@
+{
+  "fill-specializations" : [
+    { "value" : { "solid" : "srgb:1.00000,1.00000,1.00000,1.00000" } },
+    { "appearance" : "dark", "value" : { "solid" : "srgb:0.11765,0.12157,0.14118,1.00000" } }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            { "value" : { "solid" : "srgb:0.23137,0.35686,0.85882,1.00000" } },
+            { "appearance" : "dark", "value" : { "solid" : "srgb:0.55294,0.63529,0.96078,1.00000" } }
+          ],
+          "glass" : true,
+          "image-name" : "caret.svg",
+          "name" : "caret"
+        },
+        {
+          "fill-specializations" : [
+            { "value" : { "solid" : "srgb:0.11373,0.11373,0.12157,1.00000" } },
+            { "appearance" : "dark", "value" : { "solid" : "srgb:0.94902,0.94902,0.95686,1.00000" } }
+          ],
+          "glass" : true,
+          "image-name" : "ring.svg",
+          "name" : "ring"
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [ "macOS" ]
+  }
+}
