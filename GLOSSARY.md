@@ -16,6 +16,10 @@ _Avoid_: Window, popup, HUD
 What the Panel shows: the Note, Search or the Trash. They form a stack with the Note at the bottom; Esc closes the top one, and the Panel always opens on the Note.
 _Avoid_: View, page, mode
 
+**Shortcut**:
+A key combination bound to a command. Seven can be reassigned: the Hotkey and six that work only inside the Panel (new Note, Latest, Search, previous and next Note, move to Trash). Formatting and text-size shortcuts are fixed. Two commands never share one, and each is always set.
+_Avoid_: Keybinding, key equivalent, accelerator
+
 **Hotkey**:
 The one shortcut that works from any app: it shows and hides the Panel. Every other shortcut works only inside the Panel. The user can change it but never leave it empty.
 _Avoid_: Global shortcut, trigger, activation key

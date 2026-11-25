@@ -1,7 +1,7 @@
 #!/bin/bash
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
-# Environment: SURFACE (window|context-menu|text-size|save-failure), FIXTURE (text file), OUT (folder for the PNGs).
+# Environment: SURFACE (window|context-menu|text-size|save-failure|recorder), FIXTURE (text file), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
@@ -39,11 +39,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The recorder window is photographed once per state, at its own size.
+states=("")
+size="540 440"
+if [[ "$surface" == "recorder" ]]; then
+    states=(idle recording error)
+    size="520 440"
+fi
+
 files=()
+for state in "${states[@]}"; do
 for theme in light dark; do
     : >"$log"
-    "$app/Contents/MacOS/Pith" -PithFixture "$fixture" -PithAppearance "$theme" -PithWindowSize "540 440" \
-        ${args[@]+"${args[@]}"} ${size_args[@]+"${size_args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
+    state_args=()
+    [[ -n "$state" ]] && state_args=(-PithRecorderState "$state")
+    "$app/Contents/MacOS/Pith" -PithFixture "$fixture" -PithAppearance "$theme" -PithWindowSize "$size" \
+        ${args[@]+"${args[@]}"} ${size_args[@]+"${size_args[@]}"} ${state_args[@]+"${state_args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
     pid=$!
 
     for _ in $(seq 100); do
@@ -65,6 +76,9 @@ for theme in light dark; do
             name="$surface-$theme.png"
         elif [[ "$surface" == "window" ]]; then
             name="window-$theme.png"
+        elif [[ "$surface" == "recorder" ]]; then
+            [[ "$role" == "window" ]] || continue
+            name="recorder-$state-$theme.png"
         else
             [[ "$role" == "window" ]] || continue
             name="$surface-$theme.png"
@@ -83,6 +97,7 @@ for theme in light dark; do
         echo "shots: no '$surface' window reported in the $theme theme" >&2
         exit 1
     fi
+done
 done
 
 printf '%s\n' "${files[@]}"

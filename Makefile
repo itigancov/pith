@@ -11,7 +11,7 @@ ifeq ($(CONFIG),Release)
 DESTINATION := -destination 'generic/platform=macOS'
 endif
 
-# `make shots`: SURFACE=context-menu|text-size|save-failure for another surface, FIXTURE=<path> for another text
+# `make shots`: SURFACE=context-menu|text-size|save-failure|recorder for another surface, FIXTURE=<path> for another text
 # (`Fixtures/Empty.md` for the placeholder), OUT=<folder> for the PNGs.
 SURFACE ?= window
 SHOTS_DEFAULT_FIXTURE := $(if $(filter text-size,$(SURFACE)),TextSize.md,Panel.md)

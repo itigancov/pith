@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var noteScreen: NoteScreen?
     private let textSize = TextSizeModel(initial: AppDelegate.textSizeArgument())
     private let hotkeys = HotkeyCenter()
+    private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
+    private var recorderWindow: RecorderTestWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearanceArgument()
@@ -24,10 +26,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screen.load()
 
         hotkeys.onPress = { [weak panel] in panel?.toggle() }
-        hotkeys.register(.default)
+        // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
+        shortcuts.registerHotkey()
 
-        // Every launch shows the Panel, as the Hotkey does.
-        panel.show()
+        // Every launch shows the Panel, as the Hotkey does; the recorder window takes its place for `-PithShow recorder`.
+        if Surface.requested == .recorder {
+            let state = UserDefaults.standard.string(forKey: "PithRecorderState").flatMap(Self.recorderState)
+            recorderWindow = RecorderTestWindow(store: shortcuts, size: windowSizeArgument(), state: state)
+            recorderWindow?.show()
+        } else {
+            panel.show()
+        }
 
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
         if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
@@ -112,23 +121,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case textSize = "text-size"
         /// The sheet of the alert about notes that could not be saved.
         case saveFailure = "save-failure"
+        /// The test window of the Shortcut recorder instead of the Panel.
+        case recorder
 
         var opensPopup: Bool { self == .contextMenu }
         /// A sheet slides in; the window is captured only after it has.
         var opensSheet: Bool { self == .saveFailure }
+
+        static var requested: Surface {
+            UserDefaults.standard.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
+        }
     }
 
-    /// `-PithShow window|context-menu|text-size|save-failure` opens that surface for `make shots`; `window` (the default)
-    /// opens nothing. `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
+    /// `-PithRecorderState idle|recording|error` for the recorder window; `error` shows "Used by Bold".
+    private static func recorderState(_ name: String) -> ShortcutRecorderModel.State? {
+        switch name {
+        case "idle": .idle
+        case "recording": .recording(error: nil)
+        case "error": .recording(error: Rejection.usedBy("Bold").message)
+        default: nil
+        }
+    }
+
+    /// `-PithShow window|context-menu|text-size|save-failure|recorder` opens that surface for `make shots`; `window` (the
+    /// default) opens nothing. `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
-        let surface = defaults.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
+        let surface = Surface.requested
         let editor = screen.editor
-        window.display()
+        // The recorder window is the window to photograph there; the Panel stays hidden.
+        let shotWindow = recorderWindow?.window ?? window
+        shotWindow.display()
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
             let attempts = Counter()
-            let panelNumber = window.windowNumber
+            let panelNumber = shotWindow.windowNumber
             let opensPopup = surface.opensPopup
             let opensSheet = surface.opensSheet
             let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
@@ -166,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 screen.showSizeHUD(size: self?.textSize.size ?? TextSizeModel.defaultSize, autoHide: false)
             case .saveFailure:
                 self?.panelController?.presentSaveFailureAlert(reason: "SQLite error 13: database or disk is full.")
-            case .window: break
+            case .window, .recorder: break
             }
         }
     }
