@@ -38,6 +38,14 @@ final class PithPanel: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { onCancel() }
 
+    // ⌘= is ⌘+ without ⇧; the menu item has the shifted one only.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, event.charactersIgnoringModifiers == "=" {
+            return NSApp.sendAction(#selector(AppDelegate.increaseTextSize(_:)), to: nil, from: self)
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     /// A press on the margins around the text, or below its last line, moves the Panel; any other event goes on as usual.
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown, let content = contentView as? PanelContentView,
@@ -49,7 +57,7 @@ final class PithPanel: NSPanel {
     }
 }
 
-/// The Panel's root view: rounded background, the editor in its scroll view, the cursor in an inactive app,
+/// The Panel's root view: rounded background, the view of the top screen, the cursor in an inactive app,
 /// and the contrast border.
 final class PanelContentView: NSView {
     static let cornerRadius: CGFloat = 16
@@ -66,27 +74,14 @@ final class PanelContentView: NSView {
             : NSColor(white: 0, alpha: 0.5)
     }
 
-    let editor: EditorTextView
-    let scrollView = NSScrollView()
+    private(set) var screen: PanelScreen?
 
-    init(editor: EditorTextView) {
-        self.editor = editor
+    init() {
         super.init(frame: NSRect(origin: .zero, size: PanelFrame.defaultSize))
         wantsLayer = true
         layer?.cornerRadius = Self.cornerRadius
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-
-        scrollView.frame = bounds
-        scrollView.autoresizingMask = [.width, .height]
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.drawsBackground = false
-        // The title bar is invisible, so the text starts at the editor's own inset, not below it.
-        scrollView.automaticallyAdjustsContentInsets = false
-        editor.drawsBackground = false
-        scrollView.documentView = editor
-        addSubview(scrollView)
 
         // `.activeAlways`: the standard cursor rects of the text view do not work while Pith is inactive.
         addTrackingArea(NSTrackingArea(
@@ -106,6 +101,15 @@ final class PanelContentView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// Shows `screen`'s view in place of the one before.
+    func show(_ screen: PanelScreen) {
+        self.screen?.view.removeFromSuperview()
+        self.screen = screen
+        screen.view.frame = bounds
+        screen.view.autoresizingMask = [.width, .height]
+        addSubview(screen.view)
+    }
 
     override var wantsUpdateLayer: Bool { true }
 
@@ -132,20 +136,14 @@ final class PanelContentView: NSView {
 
     // MARK: Drag zone and cursor
 
-    /// Whether a press at `point` (window coordinates) moves the Panel: it is in the editor's inset around the text
-    /// or below the last line, and not on a scroller.
+    /// Whether a press at `point` (window coordinates) moves the Panel: the screen says so for its content, and
+    /// the strip along the edges and the scrollers are never part of it.
     func isDragZone(atWindowPoint point: NSPoint) -> Bool {
         let local = convert(point, from: nil)
         // The strip along the edges belongs to the system's resizing.
         guard innerBounds.contains(local) else { return false }
         if isOnScroller(atWindowPoint: point) { return false }
-        let inEditor = editor.convert(point, from: nil)
-        let visible = editor.visibleRect
-        guard visible.contains(inEditor) else { return true }
-        let inset = editor.textContainerInset
-        if inEditor.x < inset.width || inEditor.x > editor.bounds.width - inset.width { return true }
-        if inEditor.y < inset.height { return true }
-        return inEditor.y > textBottom
+        return screen?.isDragZone(atWindowPoint: point) ?? false
     }
 
     /// Width of the edge strip where a press resizes the Panel rather than moving it.
@@ -158,20 +156,6 @@ final class PanelContentView: NSView {
         // `hitTest` takes a point in the superview's coordinates.
         guard let superview else { return false }
         return hitTest(superview.convert(point, from: nil)) is NSScroller
-    }
-
-    /// The bottom of the last laid-out line in the editor's coordinates; the first line's height for an empty Note.
-    private var textBottom: CGFloat {
-        guard let layout = editor.textLayoutManager else { return .greatestFiniteMagnitude }
-        var bottom = layout.usageBoundsForTextContainer.maxY
-        layout.enumerateTextLayoutFragments(from: layout.documentRange.endLocation, options: [.reverse]) { fragment in
-            bottom = max(bottom, fragment.layoutFragmentFrame.maxY)
-            return false
-        }
-        if bottom <= 0, let font = editor.typingAttributes[.font] as? NSFont {
-            bottom = font.ascender - font.descender + font.leading
-        }
-        return editor.textContainerOrigin.y + bottom
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -188,7 +172,7 @@ final class PanelContentView: NSView {
 
     private func updateCursor(for event: NSEvent) {
         let point = event.locationInWindow
-        let overText = innerBounds.contains(convert(point, from: nil))
+        let overText = screen?.usesTextCursor == true && innerBounds.contains(convert(point, from: nil))
             && !isOnScroller(atWindowPoint: point) && !isDragZone(atWindowPoint: point)
         if !overText {
             NSCursor.arrow.set()

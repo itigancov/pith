@@ -178,6 +178,17 @@ for (name, command, selection) in commands {
     report(name, samples)
 }
 
+// A new text size restyles the whole Note at once (ticket 05); the sizes alternate so every round changes fonts.
+var resizes: [Sample] = []
+for round in 0..<(1 + 9) {
+    let theme = Theme(textSize: round % 2 == 0 ? 17 : 14)
+    let time = timed { styler.apply(theme, to: storage) }
+    if round >= 1 { resizes.append(time) }
+}
+styler.apply(Theme(), to: storage)
+// Measured at about 145 ms; the budget leaves room for a slower machine.
+report("restyle for a new text size", resizes, max: 250)
+
 report("BlockScanner.scan of the Note", (0..<31).map { _ in timed { _ = BlockScanner.scan(storage.string) } })
 
 // Storage: a database file in a temporary directory (WAL), the same Note.

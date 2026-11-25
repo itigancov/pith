@@ -40,7 +40,7 @@ struct Plate: Equatable {
 
 /// Hands out a `PlateLayoutFragment` for each paragraph with plates, and the standard fragment for the rest.
 final class PlateLayout: NSObject, NSTextLayoutManagerDelegate {
-    let theme: Theme
+    var theme: Theme
 
     init(theme: Theme) {
         self.theme = theme

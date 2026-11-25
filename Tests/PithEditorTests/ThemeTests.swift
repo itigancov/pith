@@ -53,6 +53,45 @@ struct ThemeTests {
         #expect(plain[.foregroundColor] as? NSColor == NSColor.labelColor)
     }
 
+    // MARK: Text size
+
+    @Test func defaultSizeIs14AndMonoIsOneLess() {
+        #expect(Theme().textSize == 14)
+        #expect(Theme().monoSize == 13)
+    }
+
+    @Test func sizeSetsTheTextFontAndMonoIsOneLess() {
+        let big = Theme(textSize: 17)
+        let plain = big.attributes(for: big.style(block: .paragraph, spans: []))
+        let code = big.attributes(for: big.style(block: .paragraph, spans: [.code]))
+        #expect(font(plain) == NSFont.systemFont(ofSize: 17))
+        #expect(font(code) == NSFont.monospacedSystemFont(ofSize: 16, weight: .regular))
+        #expect(font(big.baseAttributes) == NSFont.systemFont(ofSize: 17))
+    }
+
+    @Test func sizeStaysBetween10And48() {
+        #expect(Theme(textSize: 10).textSize == 10)
+        #expect(Theme(textSize: 48).textSize == 48)
+        #expect(Theme(textSize: 9).textSize == 10)
+        #expect(Theme(textSize: 100).textSize == 48)
+    }
+
+    @Test func lineHeightMultipleDoesNotDependOnSize() throws {
+        let paragraph = try #require(Theme(textSize: 30).baseAttributes[.paragraphStyle] as? NSParagraphStyle)
+        #expect(paragraph.lineHeightMultiple == 1.25)
+    }
+
+    @Test func inkIsTheBlueOfTheArtboardInBothAppearances() throws {
+        func rgb(_ name: NSAppearance.Name) throws -> [Int] {
+            var color: NSColor?
+            try #require(NSAppearance(named: name)).performAsCurrentDrawingAppearance { color = Theme.ink.usingColorSpace(.sRGB) }
+            let resolved = try #require(color)
+            return [resolved.redComponent, resolved.greenComponent, resolved.blueComponent].map { Int(($0 * 255).rounded()) }
+        }
+        #expect(try rgb(.aqua) == [0x3B, 0x5B, 0xDB])
+        #expect(try rgb(.darkAqua) == [0x8D, 0xA2, 0xF5])
+    }
+
     // MARK: Inline kinds
 
     @Test func strongIsBold() {

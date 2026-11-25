@@ -1,7 +1,7 @@
 #!/bin/bash
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
-# Environment: SURFACE (window|context-menu), FIXTURE (text file), OUT (folder for the PNGs).
+# Environment: SURFACE (window|context-menu|text-size|save-failure), FIXTURE (text file), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
@@ -24,6 +24,10 @@ if offset="$(LC_ALL=C grep -boF -m1 "$selected" "$fixture" | head -n1 | cut -d: 
     args=(-PithSelection "$offset ${#selected}")
 fi
 
+# The artboard of the size pill is at 17 pt.
+size_args=()
+[[ "$surface" == "text-size" ]] && size_args=(-PithTextSize 17)
+
 log="$(mktemp)"
 pid=""
 cleanup() {
@@ -39,7 +43,7 @@ files=()
 for theme in light dark; do
     : >"$log"
     "$app/Contents/MacOS/Pith" -PithFixture "$fixture" -PithAppearance "$theme" -PithWindowSize "540 440" \
-        ${args[@]+"${args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
+        ${args[@]+"${args[@]}"} ${size_args[@]+"${size_args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
     pid=$!
 
     for _ in $(seq 100); do
@@ -55,13 +59,15 @@ for theme in light dark; do
     while read -r _ role id; do
         [[ "$role" == "done" || -z "$id" ]] && continue
         # `screencapture -l` of a popup menu returns the window with the menu open, the same as for the window itself,
-        # so any other surface gets one PNG per theme, from its menu window.
-        if [[ "$surface" == "window" ]]; then
-            name="window-$theme.png"
-        elif [[ "$role" == "menu" ]]; then
+        # so the context menu gets its PNG from its menu window; every other surface is in the window itself.
+        if [[ "$surface" == "context-menu" ]]; then
+            [[ "$role" == "menu" ]] || continue
             name="$surface-$theme.png"
+        elif [[ "$surface" == "window" ]]; then
+            name="window-$theme.png"
         else
-            continue
+            [[ "$role" == "window" ]] || continue
+            name="$surface-$theme.png"
         fi
         if ! screencapture -x -o -l "$id" "$OUT/$name" || [[ ! -s "$OUT/$name" ]]; then
             echo "shots: screencapture failed; give the terminal Screen Recording in System Settings → Privacy & Security" >&2
