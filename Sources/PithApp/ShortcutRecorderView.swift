@@ -101,6 +101,9 @@ final class ShortcutRecorderView: NSView {
     private let placeholder = NSTextField(labelWithString: "Type shortcut…")
     private let ring = CALayer()
     private var clickMonitor: Any?
+    /// The ring of keyboard focus; a click that focuses the recorder does not show it.
+    private var showsFocusRing = false
+    private var isFocusingWithMouse = false
     private var displayObserver: NSObjectProtocol?
     private var resignObserver: NSObjectProtocol?
 
@@ -173,7 +176,9 @@ final class ShortcutRecorderView: NSView {
         }
 
         refreshAppearance()
-        if model.error != oldError {
+        // A refused key says so again even when the text is the same as before.
+        let refusedKey = model.error != nil && { if case .key = input { true } else { false } }()
+        if model.error != oldError || refusedKey {
             onRejection(model.error)
             if let error = model.error { announce(error) }
         }
@@ -198,18 +203,22 @@ final class ShortcutRecorderView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func becomeFirstResponder() -> Bool {
+        showsFocusRing = !isFocusingWithMouse
         refreshAppearance()
         return true
     }
 
     override func resignFirstResponder() -> Bool {
+        showsFocusRing = false
         if model.isRecording { apply(.lostFocus) }
         refreshAppearance()
         return true
     }
 
     override func mouseDown(with event: NSEvent) {
+        isFocusingWithMouse = true
         window?.makeFirstResponder(self)
+        isFocusingWithMouse = false
         apply(.click)
     }
 
@@ -235,13 +244,7 @@ final class ShortcutRecorderView: NSView {
             return true
         }
         if event.isARepeat { return true }
-        if modifiers.isEmpty, code == kVK_Escape {
-            apply(.escape)
-        } else if code == kVK_Tab, modifiers.isEmpty || modifiers == .shift {
-            apply(.tab(reverse: modifiers == .shift))
-        } else {
-            apply(.key(Shortcut(keyCode: UInt32(code), modifiers: modifiers)))
-        }
+        apply(ShortcutRecorderModel.Input(keyCode: UInt32(code), modifiers: modifiers))
         return true
     }
 
@@ -326,7 +329,7 @@ final class ShortcutRecorderView: NSView {
         layer.masksToBounds = false
         let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         let recording = model.isRecording
-        let focused = window?.firstResponder === self
+        let focused = showsFocusRing && window?.firstResponder === self
         let failing = model.error != nil
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer.backgroundColor = (isCompact ? RecorderTheme.compactFill : RecorderTheme.largeFill).cgColor
@@ -364,6 +367,12 @@ final class ShortcutRecorderView: NSView {
         for keycap in keycaps { addSubview(keycap) }
         invalidateIntrinsicContentSize()
         refreshAppearance()
+    }
+
+    /// A recorder taken out of its window while recording must not leave the Hotkey paused.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil, model.isRecording { apply(.lostFocus) }
     }
 
     override func viewDidChangeEffectiveAppearance() {

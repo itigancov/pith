@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import Carbon.HIToolbox
 
 /// The states of a Shortcut recorder and what moves it between them, with no AppKit in it.
 /// The view turns events into `Input` and acts on the `Output`.
@@ -24,6 +25,19 @@ nonisolated struct ShortcutRecorderModel: Equatable, Sendable {
         case tab(reverse: Bool)
         /// A click elsewhere, or the window or the recorder lost focus.
         case lostFocus
+
+        /// What a key press means while recording: Esc and Tab with no modifiers (⇧ allowed for Tab) are the recorder's own
+        /// keys; every other key, ⌘Esc included, is a candidate.
+        init(keyCode: UInt32, modifiers: NSEvent.ModifierFlags) {
+            let held = modifiers.intersection(Shortcut.relevantModifiers)
+            if held.isEmpty, keyCode == UInt32(kVK_Escape) {
+                self = .escape
+            } else if keyCode == UInt32(kVK_Tab), held.isEmpty || held == .shift {
+                self = .tab(reverse: held == .shift)
+            } else {
+                self = .key(Shortcut(keyCode: keyCode, modifiers: held))
+            }
+        }
     }
 
     enum Output: Equatable, Sendable {

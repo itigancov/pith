@@ -127,7 +127,7 @@ final class ShortcutStore {
             if !isRecording { _ = registrar.register(old) }
             return .carbon
         }
-        store(shortcut, for: action)
+        persist(shortcut, for: action)
         return nil
     }
 
@@ -178,7 +178,7 @@ final class ShortcutStore {
     static func isTextEditing(_ shortcut: Shortcut) -> Bool {
         let navigates = shortcut.modifiers.contains(.command) || shortcut.modifiers.contains(.option)
         if shortcut.isNavigationKey { return navigates }
-        let deletes = shortcut.keyCode == 51 || shortcut.keyCode == 117
+        let deletes = shortcut.keyCode == UInt32(kVK_Delete) || shortcut.keyCode == UInt32(kVK_ForwardDelete)
         return deletes && shortcut.modifiers.contains(.option)
     }
 
@@ -202,7 +202,7 @@ final class ShortcutStore {
         return result
     }
 
-    private func store(_ shortcut: Shortcut, for action: ShortcutAction) {
+    private func persist(_ shortcut: Shortcut, for action: ShortcutAction) {
         if shortcut == action.defaultShortcut {
             overrides[action] = nil
         } else {

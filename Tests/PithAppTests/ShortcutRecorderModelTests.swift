@@ -76,4 +76,19 @@ struct ShortcutRecorderModelTests {
         #expect(model.handle(input) == .none)
         #expect(model.state == .idle)
     }
+
+    @Test func escapeAndTabWithoutModifiersAreTheRecordersOwnKeys() {
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Escape), modifiers: []) == .escape)
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Tab), modifiers: []) == .tab(reverse: false))
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Tab), modifiers: .shift) == .tab(reverse: true))
+    }
+
+    @Test func commandEscapeAndCommandTabAreOrdinaryKeys() {
+        let escape = Shortcut(keyCode: UInt32(kVK_Escape), modifiers: .command)
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Escape), modifiers: .command) == .key(escape))
+        let tab = Shortcut(keyCode: UInt32(kVK_Tab), modifiers: [.control, .shift])
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Tab), modifiers: [.control, .shift]) == .key(tab))
+        // Caps Lock and Fn do not count as modifiers.
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Escape), modifiers: .capsLock) == .escape)
+    }
 }
