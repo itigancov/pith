@@ -11,10 +11,12 @@ enum PanelVisibility {
     }
 }
 
-/// Shows and hides the Panel, remembers its frame, and puts storage alerts on it as sheets.
-final class PanelController: NSObject, NSWindowDelegate {
+/// Shows and hides the Panel, remembers its frame, keeps its screens and puts storage alerts on it as sheets.
+/// It knows only `PanelScreen`: the Note is the bottom screen, others go on top of it.
+final class PanelController: NSObject, NSWindowDelegate, StorageAlerts {
     let panel: PithPanel
-    let editor: EditorTextView
+    private let content: PanelContentView
+    private let screens: ScreenStack
     /// Called before the Panel starts hiding, for saving the Note at once.
     var onWillHide: () -> Void = {}
 
@@ -34,17 +36,45 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Alerts waiting for the Panel to show, oldest first.
     private var pendingAlerts: [(alert: NSAlert, handler: (NSApplication.ModalResponse) -> Void)] = []
 
-    init(editor: EditorTextView, defaults: UserDefaults = .standard, fixedSize: CGSize? = nil) {
-        self.editor = editor
+    init(note: PanelScreen, defaults: UserDefaults = .standard, fixedSize: CGSize? = nil) {
         self.defaults = defaults
         self.fixedSize = fixedSize
-        panel = PithPanel(content: PanelContentView(editor: editor))
+        content = PanelContentView()
+        content.show(note)
+        screens = ScreenStack(root: note)
+        panel = PithPanel(content: content)
         super.init()
         panel.delegate = self
-        panel.onCancel = { [weak self] in self?.hide() }
+        panel.onCancel = { [weak self] in self?.cancel() }
+        screens.onChange = { [weak self] _, new in self?.screenDidChange(to: new) }
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidResignKeyAnywhere), name: NSWindow.didResignKeyNotification, object: nil
         )
+    }
+
+    /// The screen on top now.
+    var topScreen: PanelScreen { screens.top }
+
+    /// Puts `screen` on top of the others.
+    func push(_ screen: PanelScreen) { screens.push(screen) }
+
+    /// Takes `screen` off the stack.
+    func pop(_ screen: PanelScreen) { screens.pop(screen) }
+
+    /// Esc: the top screen first; the Panel hides when it leaves Esc alone.
+    private func cancel() {
+        if !screens.cancel() { hide() }
+    }
+
+    private func screenDidChange(to screen: PanelScreen) {
+        content.show(screen)
+        focusTopScreen()
+    }
+
+    /// Focus goes to the top screen, except while a sheet has it.
+    private func focusTopScreen() {
+        guard panel.attachedSheet == nil, panel.isKeyWindow else { return }
+        if let responder = screens.top.preferredFirstResponder { panel.makeFirstResponder(responder) }
     }
 
     func toggle() {
@@ -67,7 +97,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let sheet = panel.attachedSheet {
             sheet.makeKey()
         } else {
-            panel.makeFirstResponder(editor)
+            focusTopScreen()
         }
         panel.invalidateShadow()
         fade(to: 1, timing: .easeOut, completion: nil)
@@ -81,6 +111,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         transition += 1
         let current = transition
         onWillHide()
+        screens.hide()
         fade(to: 0, timing: .easeIn) { [weak self] in
             guard let self, self.transition == current else { return }
             self.panel.orderOut(nil)
@@ -201,6 +232,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Notes cannot be written: the text stays in memory and Pith keeps trying while it runs.
+    func presentSaveFailureAlert(reason: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Pith couldn’t save your notes"
+        alert.informativeText = "\(reason) Pith keeps trying while it runs. Changes since the last save are lost if you quit."
+        alert.addButton(withTitle: "OK")
+        enqueue(alert) { _ in }
+    }
+
     private func enqueue(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
         pendingAlerts.append((alert, handler))
         presentNextAlert()
@@ -213,7 +254,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         alert.beginSheetModal(for: panel) { [weak self] response in
             handler(response)
             guard let self else { return }
-            if self.panel.isKeyWindow { self.panel.makeFirstResponder(self.editor) }
+            self.focusTopScreen()
             self.presentNextAlert()
         }
     }

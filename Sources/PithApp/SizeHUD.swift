@@ -104,8 +104,8 @@ final class SizeHUDView: NSView {
         needsDisplay = true
     }
 
-    /// Shows the pill for `size` and holds it for a second; a new call starts the second again.
-    func show(size: Int) {
+    /// Shows the pill for `size` and holds it for a second; a new call starts the second again. Without `autoHide` it stays.
+    func show(size: Int, autoHide: Bool = true) {
         self.size = size
         valueLabel.stringValue = "\(size) pt"
         slider.fraction = Self.fraction(for: size)
@@ -121,7 +121,8 @@ final class SizeHUDView: NSView {
             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue]
         )
         hold?.cancel()
-        hold = scheduler.schedule(after: Self.hold) { [weak self] in self?.fadeOut() }
+        hold = nil
+        if autoHide { hold = scheduler.schedule(after: Self.hold) { [weak self] in self?.fadeOut() } }
     }
 
     /// Hides the pill at once, without a fade.

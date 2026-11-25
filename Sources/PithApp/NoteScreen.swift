@@ -30,7 +30,8 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     private let openStore: () throws -> (store: NoteStore, recovery: CorruptionRecovery?)
     private let scheduler: Scheduler
-    private let alerts: StorageAlerts
+    /// Set once the Panel exists; it owns the screen.
+    weak var alerts: StorageAlerts?
     private let textSize: TextSizeModel
 
     private var autosaver: Autosaver?
@@ -45,7 +46,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// - Parameter openStore: Opens the notes; called by `load()` and again by Try Again.
     init(
         openStore: @escaping () throws -> (store: NoteStore, recovery: CorruptionRecovery?),
-        scheduler: Scheduler, alerts: StorageAlerts, textSize: TextSizeModel
+        scheduler: Scheduler, alerts: StorageAlerts? = nil, textSize: TextSizeModel
     ) {
         self.openStore = openStore
         self.scheduler = scheduler
@@ -116,20 +117,20 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
             let autosaver = Autosaver(
                 store: store, scheduler: scheduler,
                 onNoteCreated: { [weak self] id in self?.noteWasCreated(id) },
-                onSaveFailure: { [weak self] error in self?.alerts.presentSaveFailureAlert(reason: error.localizedDescription) }
+                onSaveFailure: { [weak self] error in self?.alerts?.presentSaveFailureAlert(reason: error.localizedDescription) }
             )
             let latest = try store.stack().last
             let note = try latest.flatMap { try store.note(id: $0.id) }
             self.autosaver = autosaver
             show(note)
             editor.isEditable = true
-            if let recovery { alerts.presentCorruptionRecoveryAlert(movedFile: recovery.movedFile) }
+            if let recovery { alerts?.presentCorruptionRecoveryAlert(movedFile: recovery.movedFile) }
         } catch {
             autosaver = nil
             editor.isEditable = false
             let canRetry: Bool
             if case NoteStoreError.newerSchema = error { canRetry = false } else { canRetry = true }
-            alerts.presentOpenFailureAlert(reason: error.localizedDescription, canRetry: canRetry) { [weak self] in self?.load() }
+            alerts?.presentOpenFailureAlert(reason: error.localizedDescription, canRetry: canRetry) { [weak self] in self?.load() }
         }
     }
 
@@ -242,10 +243,17 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         blankOrNoteUndoManager
     }
 
+    /// Scrolls to the cursor and drops the restored scroll position, for a start with a chosen selection.
+    func scrollSelectionToVisible() {
+        restoredScroll = nil
+        editor.scrollRangeToVisible(editor.selectedRange())
+    }
+
     // MARK: Size pill
 
-    func showSizeHUD(size: Int) {
-        hud.show(size: size)
+    /// Shows the pill; `autoHide: false` keeps it up, for screenshots.
+    func showSizeHUD(size: Int, autoHide: Bool = true) {
+        hud.show(size: size, autoHide: autoHide)
     }
 
     // MARK: PanelScreen
