@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-nonisolated public enum NoteStoreError: Error, Equatable, CustomStringConvertible {
+nonisolated public enum NoteStoreError: Error, Equatable, CustomStringConvertible, LocalizedError {
     /// A failure of SQLite: its result code and message.
     case sqlite(code: Int32, message: String)
     /// The file was written by a newer Pith: its `user_version` is above the last migration this build knows.
@@ -14,6 +14,9 @@ nonisolated public enum NoteStoreError: Error, Equatable, CustomStringConvertibl
             "The notes were saved by a newer version of Pith (schema \(found), this version reads up to \(supported))"
         }
     }
+
+    /// What an alert shows as the reason: `description` as a sentence.
+    public var errorDescription: String? { description + "." }
 
     /// The file is not a database or its pages are damaged.
     var isCorruption: Bool {

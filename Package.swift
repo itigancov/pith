@@ -17,7 +17,7 @@ let package = Package(
         ),
         .target(
             name: "PithApp",
-            dependencies: ["PithEditor"],
+            dependencies: ["PithEditor", "PithNotes"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         // Restyle timings in release: `make bench`.
@@ -26,7 +26,7 @@ let package = Package(
         .testTarget(name: "PithNotesTests", dependencies: ["PithNotes"]),
         .testTarget(
             name: "PithAppTests",
-            dependencies: ["PithApp"],
+            dependencies: ["PithApp", "PithEditor", "PithNotes"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
     ]

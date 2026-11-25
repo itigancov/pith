@@ -2,7 +2,8 @@ DERIVED := .build/xcode
 # `make run CONFIG=Release` for the manual performance check.
 CONFIG ?= Debug
 APP := $(DERIVED)/Build/Products/$(CONFIG)/Pith.app
-# `make run FIXTURE=/path/to/note.md` opens another text.
+# `make run FIXTURE=/path/to/note.md` opens another text in an in-memory database; `make run FIXTURE=` (empty)
+# opens the real database in Application Support, which `make run` and `make shots` otherwise never touch.
 FIXTURE ?= $(CURDIR)/Fixtures/Demo.md
 
 # Release is universal; the default destination would build only the host's architecture.
@@ -10,9 +11,11 @@ ifeq ($(CONFIG),Release)
 DESTINATION := -destination 'generic/platform=macOS'
 endif
 
-# `make shots`: SURFACE=context-menu for the open menu, SURFACE=recorder for the Shortcut recorder window (idle, recording, error), FIXTURE=<path> for another text, OUT=<folder> for the PNGs.
+# `make shots`: SURFACE=context-menu|text-size|save-failure|recorder for another surface, FIXTURE=<path> for another text
+# (`Fixtures/Empty.md` for the placeholder), OUT=<folder> for the PNGs.
 SURFACE ?= window
-SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/Panel.md,$(FIXTURE))
+SHOTS_DEFAULT_FIXTURE := $(if $(filter text-size,$(SURFACE)),TextSize.md,Panel.md)
+SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/$(SHOTS_DEFAULT_FIXTURE),$(FIXTURE))
 
 .PHONY: test bench build run shots
 
@@ -30,7 +33,7 @@ build:
 
 # `-n` so the arguments arrive even if the app is already running.
 run: build
-	open -n $(APP) --args -PithFixture "$(FIXTURE)"
+	open -n $(APP) $(if $(FIXTURE),--args -PithFixture "$(FIXTURE)")
 
 # Light and dark PNGs of the real window, see scripts/shots.sh.
 shots: build

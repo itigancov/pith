@@ -7,6 +7,31 @@ public final class EditorTextView: NSTextView {
     /// Draws the plates of highlights and code behind the text.
     private lazy var plateLayout = PlateLayout(theme: styler.theme)
 
+    /// The look of the text. Setting it restyles the whole Note at once; the selection stays.
+    public var theme: Theme {
+        get { styler.theme }
+        set {
+            guard let textStorage else { return }
+            let selection = selectedRange()
+            styler.apply(newValue, to: textStorage)
+            plateLayout.theme = newValue
+            super.typingAttributes = newValue.baseAttributes
+            setSelectedRange(selection)
+            scrollRangeToVisible(selection)
+            needsDisplay = true
+        }
+    }
+
+    /// Shown at the start of the text while the Note is empty and no input method text is composed.
+    public var placeholder = "" {
+        didSet { needsDisplay = true }
+    }
+
+    /// Whether `placeholder` is on screen now.
+    public var isShowingPlaceholder: Bool {
+        !placeholder.isEmpty && string.isEmpty && !hasMarkedText()
+    }
+
     public convenience init() {
         self.init(usingTextLayoutManager: true)
         configure()
@@ -20,6 +45,10 @@ public final class EditorTextView: NSTextView {
             styler.attach(to: textStorage)
         }
         typingAttributes = styler.theme.baseAttributes
+        insertionPointColor = Theme.ink
+        // Only the fill: the text under it keeps its color.
+        selectedTextAttributes = [.backgroundColor: Theme.selection]
+        setAccessibilityLabel("Note")
         assert(textLayoutManager?.delegate == nil, "the text layout manager already has a delegate")
         textLayoutManager?.delegate = plateLayout
 
@@ -70,6 +99,48 @@ public final class EditorTextView: NSTextView {
         super.writeSelection(to: pboard, types: types.filter(Self.stringTypes.contains))
     }
 
+    // MARK: Layout
+
+    /// Called after the view has laid out its text, which is also when it scrolls to the cursor.
+    public var onLayout: (() -> Void)?
+
+    public override func layout() {
+        super.layout()
+        onLayout?()
+    }
+
+    // MARK: Placeholder
+
+    public override var string: String {
+        get { super.string }
+        set {
+            super.string = newValue
+            needsDisplay = true
+        }
+    }
+
+    public override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
+    }
+
+    public override func accessibilityPlaceholderValue() -> String? {
+        placeholder.isEmpty ? nil : placeholder
+    }
+
+    public override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard isShowingPlaceholder, let container = textContainer else { return }
+        var attributes = styler.theme.baseAttributes
+        attributes[.foregroundColor] = NSColor.placeholderTextColor
+        let origin = textContainerOrigin
+        let rect = NSRect(
+            x: origin.x + container.lineFragmentPadding, y: origin.y,
+            width: max(0, container.size.width - 2 * container.lineFragmentPadding), height: .greatestFiniteMagnitude
+        )
+        (placeholder as NSString).draw(with: rect, options: [.usesLineFragmentOrigin], attributes: attributes)
+    }
+
     // MARK: Input methods
 
     // While input method text is composed, the Styler holds off; once the composition is committed or cancelled,
@@ -80,11 +151,13 @@ public final class EditorTextView: NSTextView {
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
         // Empty marked text cancels the composition.
         endCompositionIfDone()
+        needsDisplay = true
     }
 
     public override func unmarkText() {
         super.unmarkText()
         endCompositionIfDone()
+        needsDisplay = true
     }
 
     public override func insertText(_ string: Any, replacementRange: NSRange) {

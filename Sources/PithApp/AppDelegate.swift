@@ -1,9 +1,11 @@
 import AppKit
 import PithEditor
+import PithNotes
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: PanelController?
-    private var editor: EditorTextView?
+    private var noteScreen: NoteScreen?
+    private let textSize = TextSizeModel(initial: AppDelegate.textSizeArgument())
     private let hotkeys = HotkeyCenter()
     private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
     private var recorderWindow: RecorderTestWindow?
@@ -11,22 +13,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearanceArgument()
 
-        let editor = EditorTextView()
-        editor.autoresizingMask = [.width]
-        editor.isVerticallyResizable = true
-        editor.isHorizontallyResizable = false
-        editor.minSize = NSSize(width: 0, height: 0)
-        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        editor.textContainer?.widthTracksTextView = true
-        editor.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        editor.textContainerInset = NSSize(width: 16, height: 16)
-        editor.allowsUndo = true
-        loadFixture(into: editor)
-        self.editor = editor
+        let screen = NoteScreen(openStore: makeStoreOpener(), scheduler: TaskScheduler(), textSize: textSize)
+        self.noteScreen = screen
 
-        let panel = PanelController(editor: editor, fixedSize: windowSizeArgument())
+        let panel = PanelController(note: screen, fixedSize: windowSizeArgument())
         self.panelController = panel
+        screen.alerts = panel
+        panel.onWillHide = { [weak screen] in screen?.flush() }
         NSApp.mainMenu = makeMainMenu()
+
+        // The alerts of the load wait in the Panel until it shows.
+        screen.load()
 
         hotkeys.onPress = { [weak panel] in panel?.toggle() }
         // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
@@ -44,25 +41,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
         if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
 
-        // `-PithSelection "<location> <length>"` starts with that selection, for screenshots of it.
-        if let numbers = UserDefaults.standard.string(forKey: "PithSelection")?.split(separator: " ").compactMap({ Int($0) }),
-           numbers.count == 2 {
-            editor.setSelectedRange(NSRange(location: numbers[0], length: numbers[1]))
-            editor.scrollRangeToVisible(editor.selectedRange())
-        }
+        // `-PithSelection "<location> <length>"` starts with that selection in view, for screenshots of it.
+        if UserDefaults.standard.string(forKey: "PithSelection") != nil { screen.scrollSelectionToVisible() }
 
         presentAlertArguments()
 
-        showSurface(in: panel.panel, editor: editor)
+        showSurface(in: panel.panel, screen: screen)
     }
 
-    /// `-PithFixture <path>` starts with that UTF-8 file's text; without it, or if it cannot be read, the editor is empty.
-    private func loadFixture(into editor: EditorTextView) {
-        guard let path = UserDefaults.standard.string(forKey: "PithFixture") else { return }
+    func applicationWillTerminate(_ notification: Notification) {
+        noteScreen?.flush()
+    }
+
+    /// `-PithTextSize <n>` starts at that size instead of the stored one, and stores nothing.
+    private static func textSizeArgument() -> Int? {
+        let value = UserDefaults.standard.integer(forKey: "PithTextSize")
+        return value == 0 ? nil : value
+    }
+
+    /// Where the notes are. With `-PithFixture <path>` it is an in-memory database holding one Note, that UTF-8 file's text
+    /// with the selection of `-PithSelection "<location> <length>"`; nothing goes to disk. If the file cannot be read, the
+    /// database is empty. Without the flag it is the real database in Application Support.
+    private func makeStoreOpener() -> () throws -> (store: NoteStore, recovery: CorruptionRecovery?) {
+        let defaults = UserDefaults.standard
+        guard let path = defaults.string(forKey: "PithFixture") else {
+            return { try NoteStore.open(at: .file(NoteStore.defaultFileURL)) }
+        }
+        let text: String?
         do {
-            editor.string = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+            text = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
         } catch {
             NSLog("Pith: cannot read fixture %@: %@", path, String(describing: error))
+            text = nil
+        }
+        var selection = NoteSelection(location: 0, length: 0)
+        if let numbers = defaults.string(forKey: "PithSelection")?.split(separator: " ").compactMap({ Int($0) }), numbers.count == 2 {
+            selection = NoteSelection(location: numbers[0], length: numbers[1])
+        }
+        return {
+            let opened = try NoteStore.open(at: .memory)
+            if let text { _ = try opened.store.insert(text: text, selection: selection, scrollOffset: 0) }
+            return opened
         }
     }
 
@@ -77,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `-PithCorruptAlert <path>` shows the alert about a damaged notes file set aside at `path`.
     /// `-PithOpenFailureAlert <reason>` shows the alert about notes that did not open, with Try Again;
     /// `-PithOpenFailureAlert newerSchema` shows its variant for notes from a newer Pith, with Quit only.
+    /// `-PithSaveFailureAlert <reason>` shows the alert about notes that could not be saved.
     private func presentAlertArguments() {
         guard let panel = panelController else { return }
         if let path = UserDefaults.standard.string(forKey: "PithCorruptAlert") {
@@ -88,16 +108,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSLog("Pith: Try Again pressed")
             }
         }
+        if let reason = UserDefaults.standard.string(forKey: "PithSaveFailureAlert") {
+            panel.presentSaveFailureAlert(reason: reason)
+        }
     }
 
     /// What `-PithShow` opens for `make shots`. `window` opens nothing; a surface that adds a popup window sets `opensPopup`.
     private enum Surface: String {
         case window
         case contextMenu = "context-menu"
+        /// The size pill, held on screen.
+        case textSize = "text-size"
+        /// The sheet of the alert about notes that could not be saved.
+        case saveFailure = "save-failure"
         /// The test window of the Shortcut recorder instead of the Panel.
         case recorder
 
         var opensPopup: Bool { self == .contextMenu }
+        /// A sheet slides in; the window is captured only after it has.
+        var opensSheet: Bool { self == .saveFailure }
 
         static var requested: Surface {
             UserDefaults.standard.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
@@ -114,23 +143,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithShow window|context-menu|recorder` opens that surface for `make shots`; `window` (the default) opens nothing.
-    /// `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
-    private func showSurface(in window: NSWindow, editor: EditorTextView) {
+    /// `-PithShow window|context-menu|text-size|save-failure|recorder` opens that surface for `make shots`; `window` (the
+    /// default) opens nothing. `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
+    private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
         let surface = Surface.requested
+        let editor = screen.editor
         // The recorder window is the window to photograph there; the Panel stays hidden.
         let shotWindow = recorderWindow?.window ?? window
         shotWindow.display()
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
-            var attempts = 0
+            let attempts = Counter()
             let panelNumber = shotWindow.windowNumber
+            let opensPopup = surface.opensPopup
+            let opensSheet = surface.opensSheet
             let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
-                attempts += 1
+                attempts.value += 1
                 let shots = Self.visibleShots(panel: panelNumber)
                 // Wait until the surface is on screen; give up after 8 s and report what there is.
-                guard attempts >= 32 || (shots.contains { $0.role == "window" } && (!surface.opensPopup || shots.contains { $0.role == "menu" })) else { return }
+                let settled = !opensSheet || attempts.value >= 6
+                guard attempts.value >= 32 || (settled && shots.contains { $0.role == "window" } && (!opensPopup || shots.contains { $0.role == "menu" })) else { return }
                 timer.invalidate()
                 for shot in shots { print("PithShot \(shot.role) \(shot.id)") }
                 print("PithShot done")
@@ -139,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             RunLoop.main.add(timer, forMode: .common)
         }
         // After the window is on screen: `popUp` started during launch can come up without anything on screen.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             switch surface {
             case .contextMenu:
                 // On the selection if there is one: a right click elsewhere moves it. Otherwise the middle of the visible text.
@@ -156,9 +189,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let event, let menu = editor.menu(for: event) {
                     menu.popUp(positioning: nil, at: point, in: editor)
                 }
+            case .textSize:
+                screen.showSizeHUD(size: self?.textSize.size ?? TextSizeModel.defaultSize, autoHide: false)
+            case .saveFailure:
+                self?.panelController?.presentSaveFailureAlert(reason: "SQLite error 13: database or disk is full.")
             case .window, .recorder: break
             }
         }
+    }
+
+    private final class Counter: @unchecked Sendable {
+        var value = 0
     }
 
     /// The visible windows of this process: the Panel is the window (its sheet shows in its capture), anything at the
@@ -233,6 +274,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         format.addItem(.separator())
         format.addItem(withTitle: "Complete Task", action: #selector(EditorTextView.toggleTask(_:)), keyEquivalent: "k")
 
+        // ⌘= also works, see `PithPanel`.
+        let view = submenu(in: main, title: "View")
+        view.addItem(withTitle: "Bigger", action: #selector(increaseTextSize(_:)), keyEquivalent: "+").target = self
+        view.addItem(withTitle: "Smaller", action: #selector(decreaseTextSize(_:)), keyEquivalent: "-").target = self
+        view.addItem(withTitle: "Actual Size", action: #selector(resetTextSize(_:)), keyEquivalent: "0").target = self
+
         let debug = submenu(in: main, title: "Debug")
         debug.addItem(withTitle: "Generate 5k Lines", action: #selector(generateBigNote(_:)), keyEquivalent: "")
 
@@ -244,13 +291,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return main
     }
 
+    // MARK: Text size
+
+    @objc func increaseTextSize(_ sender: Any?) { changeTextSize { $0.bigger() } }
+    @objc func decreaseTextSize(_ sender: Any?) { changeTextSize { $0.smaller() } }
+    @objc func resetTextSize(_ sender: Any?) { changeTextSize { $0.reset() } }
+
+    /// Changes the size and shows the pill, also at the ends of the range where the size stays.
+    private func changeTextSize(_ change: (TextSizeModel) -> Void) {
+        change(textSize)
+        noteScreen?.showSizeHUD(size: textSize.size)
+    }
+
     /// Replaces the Note with a generated one of 5000 lines, the same as the bench's, and forgets the undo history.
     @objc private func generateBigNote(_ sender: Any?) {
-        guard let editor else { return }
-        editor.string = NoteGenerator.note(lines: 5000, seed: 1)
-        editor.setSelectedRange(NSRange(location: 0, length: 0))
-        editor.scrollRangeToVisible(NSRange(location: 0, length: 0))
-        editor.undoManager?.removeAllActions()
+        noteScreen?.replaceText(NoteGenerator.note(lines: 5000, seed: 1))
     }
 
     private func submenu(in menu: NSMenu, title: String) -> NSMenu {

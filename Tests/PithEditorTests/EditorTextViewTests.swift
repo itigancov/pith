@@ -362,9 +362,9 @@ struct EditorTextViewTests {
         view.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
         let layout = try #require(view.textLayoutManager)
         layout.ensureLayout(for: layout.documentRange)
-        let mono = NSFont.monospacedSystemFont(ofSize: Theme.monoSize, weight: .regular)
+        let mono = NSFont.monospacedSystemFont(ofSize: Theme().monoSize, weight: .regular)
         let columnWidth = ("0" as NSString).size(withAttributes: [.font: mono]).width
-        let spaceWidth = (" " as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: Theme.textSize)]).width
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: Theme().textSize)]).width
         let left = view.textContainerOrigin.x + (view.textContainer?.lineFragmentPadding ?? 0)
         let lineHeight = try #require(layout.textLayoutFragment(for: layout.documentRange.location)).layoutFragmentFrame.height
         let top = view.textContainerOrigin.y
@@ -558,7 +558,7 @@ struct EditorTextViewTests {
         #expect(view.hasMarkedText())
         #expect(view.markedRange() == NSRange(location: 2, length: 1))
         #expect(!isItalic(view, at: 1))
-        #expect(font(view, at: 2) == .systemFont(ofSize: Theme.textSize))
+        #expect(font(view, at: 2) == .systemFont(ofSize: Theme().textSize))
         commit(view, "*")
         #expect(!view.hasMarkedText())
         #expect(isItalic(view, at: 1))
@@ -568,9 +568,9 @@ struct EditorTextViewTests {
     @Test func markedTextInsideASpanHasTheBaseStyle() {
         let (view, window) = makeEditor("**ab**", selection: NSRange(location: 3, length: 0))
         compose(view, "か")
-        #expect(font(view, at: 3) == .systemFont(ofSize: Theme.textSize))
-        #expect(font(view, at: 2) == .systemFont(ofSize: Theme.textSize, weight: .bold))
-        #expect(font(view, at: 4) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 3) == .systemFont(ofSize: Theme().textSize))
+        #expect(font(view, at: 2) == .systemFont(ofSize: Theme().textSize, weight: .bold))
+        #expect(font(view, at: 4) == .systemFont(ofSize: Theme().textSize, weight: .bold))
         _ = window
     }
 
@@ -592,8 +592,8 @@ struct EditorTextViewTests {
         commit(view, "漢字")
         #expect(view.string == "**a漢字b**")
         #expect(!view.hasMarkedText())
-        #expect(font(view, at: 3) == .systemFont(ofSize: Theme.textSize, weight: .bold))
-        #expect(font(view, at: 4) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 3) == .systemFont(ofSize: Theme().textSize, weight: .bold))
+        #expect(font(view, at: 4) == .systemFont(ofSize: Theme().textSize, weight: .bold))
         _ = window
     }
 
@@ -626,8 +626,8 @@ struct EditorTextViewTests {
         compose(view, "xy")
         commit(view, "Z")
         #expect(view.string == "aZ\n**b**\n# c")
-        #expect(font(view, at: 5) == .systemFont(ofSize: Theme.textSize, weight: .bold))
-        #expect(font(view, at: 11) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 5) == .systemFont(ofSize: Theme().textSize, weight: .bold))
+        #expect(font(view, at: 11) == .systemFont(ofSize: Theme().textSize, weight: .bold))
         _ = window
     }
 
@@ -635,7 +635,7 @@ struct EditorTextViewTests {
         let (view, window) = makeEditor("a", selection: NSRange(location: 1, length: 0))
         compose(view, "か")
         view.string = "**b**"
-        #expect(font(view, at: 2) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 2) == .systemFont(ofSize: Theme().textSize, weight: .bold))
         view.insertText("*c*", replacementRange: NSRange(location: 5, length: 0))
         #expect(isItalic(view, at: 6))
         _ = window
@@ -645,7 +645,7 @@ struct EditorTextViewTests {
     func cyrillicInputStylesLikeLatin(_ letter: String) {
         let (view, window) = makeEditor("**ab** *c", selection: NSRange(location: 3, length: 0))
         view.insertText(letter, replacementRange: view.selectedRange())
-        #expect(font(view, at: 3) == .systemFont(ofSize: Theme.textSize, weight: .bold))
+        #expect(font(view, at: 3) == .systemFont(ofSize: Theme().textSize, weight: .bold))
         view.setSelectedRange(NSRange(location: 10, length: 0))
         view.insertText(letter + "*", replacementRange: view.selectedRange())
         #expect(isItalic(view, at: 9))
@@ -751,7 +751,7 @@ struct EditorTextViewTests {
         #expect(plate.kind == .highlight)
         #expect(abs(plate.frame.minX - (glyphs.minX - 2)) < 0.01)
         #expect(abs(plate.frame.maxX - (glyphs.maxX + 2)) < 0.01)
-        #expect(plate.frame.height > Theme.textSize)
+        #expect(plate.frame.height > Theme().textSize)
         #expect(plate.frame.height < glyphs.height)
         #expect(plate.frame.minY > glyphs.minY)
         #expect(plate.roundsTop && plate.roundsBottom)

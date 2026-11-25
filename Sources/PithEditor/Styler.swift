@@ -2,7 +2,7 @@ import AppKit
 
 /// Keeps a text storage styled: after every edit of its characters, restyles the Blocks that changed.
 public final class Styler: NSObject, NSTextStorageDelegate {
-    public let theme: Theme
+    public private(set) var theme: Theme
     /// Ranges (without the line break) of the Blocks restyled by the last edit.
     public private(set) var restyledRanges: [NSRange] = []
     /// Blocks of the last scan: those of the storage's text after its last edit, except while composing,
@@ -32,6 +32,16 @@ public final class Styler: NSObject, NSTextStorageDelegate {
         } else {
             restyle(textStorage, edited: editedRange, delta: delta)
         }
+    }
+
+    /// Switches to `theme` and restyles the whole storage with it; the text and its Blocks stay as they are.
+    public func apply(_ theme: Theme, to storage: NSTextStorage) {
+        self.theme = theme
+        attributesCache = [:]
+        prefixWidths = [:]
+        openingFenceParagraph = theme.paragraphStyle(headIndent: 0, spacingBefore: Theme.codeBlockPadding)
+        closingFenceParagraph = theme.paragraphStyle(headIndent: 0, spacingAfter: Theme.codeBlockPadding)
+        attach(to: storage)
     }
 
     // MARK: Composition

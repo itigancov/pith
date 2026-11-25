@@ -9,8 +9,12 @@ A single note: plain Markdown text that the user sees and edits as is.
 _Avoid_: Document, file, page
 
 **Panel**:
-The window Pith shows over all apps when the user presses the Hotkey. It holds one Note at a time and hides when the user leaves it.
+The window Pith shows over all apps when the user presses the Hotkey. It shows one Screen at a time, the Note by default, and hides when the user leaves it.
 _Avoid_: Window, popup, HUD
+
+**Screen**:
+What the Panel shows: the Note, Search or the Trash. They form a stack with the Note at the bottom; Esc closes the top one, and the Panel always opens on the Note.
+_Avoid_: View, page, mode
 
 **Shortcut**:
 A key combination bound to a command. Seven can be reassigned: the Hotkey and six that work only inside the Panel (new Note, Latest, Search, previous and next Note, move to Trash). Formatting and text-size shortcuts are fixed. Two commands never share one, and each is always set.
