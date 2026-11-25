@@ -2,10 +2,19 @@ import AppKit
 
 /// Turns markup kinds into a `TextStyle`, and a `TextStyle` into text attributes.
 public struct Theme: Sendable {
-    public init() {}
+    /// The sizes the user can pick, in points.
+    public static let sizeRange: ClosedRange<CGFloat> = 10...48
+    public static let defaultTextSize: CGFloat = 14
 
-    public static let textSize: CGFloat = 14
-    public static let monoSize: CGFloat = 13
+    /// The size of the text; code is one point less.
+    public let textSize: CGFloat
+    public var monoSize: CGFloat { textSize - 1 }
+
+    /// `textSize` is clamped to `sizeRange`.
+    public init(textSize: CGFloat = Theme.defaultTextSize) {
+        self.textSize = min(max(textSize, Self.sizeRange.lowerBound), Self.sizeRange.upperBound)
+    }
+
     public static let lineHeightMultiple: CGFloat = 1.25
     /// Space between a code block's fences and the top and bottom edges of its plate.
     public static let codeBlockPadding: CGFloat = 4
@@ -62,6 +71,19 @@ public struct Theme: Sendable {
         return attributes
     }
 
+    /// The accent of the editor: caret, selection and the size slider. One dynamic color, declared here only.
+    public static let ink = NSColor(name: "PithInk") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0x8D / 255, green: 0xA2 / 255, blue: 0xF5 / 255, alpha: 1)
+            : NSColor(srgbRed: 0x3B / 255, green: 0x5B / 255, blue: 0xDB / 255, alpha: 1)
+    }
+
+    /// The fill behind selected text: Ink at 22 % in light, 30 % in dark. The text keeps its color.
+    public static let selection = NSColor(name: "PithSelection") { appearance in
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return Theme.ink.withAlphaComponent(dark ? 0.30 : 0.22)
+    }
+
     /// Pale yellow, a bit stronger in the dark appearance.
     public var highlightColor: NSColor { Self.highlight }
 
@@ -90,8 +112,8 @@ public struct Theme: Sendable {
     private func font(for style: TextStyle) -> NSFont {
         let weight: NSFont.Weight = style.bold ? .bold : .regular
         let font = style.monospaced
-            ? NSFont.monospacedSystemFont(ofSize: Self.monoSize, weight: weight)
-            : NSFont.systemFont(ofSize: Self.textSize, weight: weight)
+            ? NSFont.monospacedSystemFont(ofSize: monoSize, weight: weight)
+            : NSFont.systemFont(ofSize: textSize, weight: weight)
         guard style.italic else { return font }
         let descriptor = font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(.italic))
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
