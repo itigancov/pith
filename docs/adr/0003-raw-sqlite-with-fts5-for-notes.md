@@ -5,5 +5,5 @@ Notes live in a single SQLite database accessed through the system `sqlite3` C A
 ## Consequences
 
 - Migrations are ours: `PRAGMA user_version` plus ordered SQL steps.
-- The store runs on the main actor: an autosave of a 5k-line Note with FTS takes about 2.5 ms.
+- The store runs on the main actor. An autosave writes only the text and takes under 1 ms for a 5k-line Note; the folding and the FTS update happen inside `search()`, because an eager index costs 12–17 ms of FTS plus 20–90 ms of folding on the main actor.
 - Backups must use `VACUUM INTO` or the backup API, never a file copy, because of the `-wal`/`-shm` files.

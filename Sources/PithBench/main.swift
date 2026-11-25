@@ -3,7 +3,8 @@ import PithEditor
 import PithNotes
 
 // Restyle timings of `Styler` over a plain `NSTextStorage` on the generated 5k-line Note (spec 09),
-// and the storage timings of `NoteStore` on the same Note in a database file (spec 03).
+// the storage timings of `NoteStore` on the same Note in a database file (spec 03),
+// and the search timings of `NoteStore` on a corpus of 2000 Notes plus that Note (spec 08a).
 // Run in release: `make bench`. Exits with 1 when a budget is missed.
 // Budgets are checked on wall time; CPU time of the thread is printed beside it, since it barely moves
 // when other processes load the machine.
@@ -204,6 +205,57 @@ do {
     }
     report("autosave of the Note (updateText)", saves, median: 5)
     report("open the Note (note(id:))", opens, median: 16)
+}
+print()
+
+// Search: 2000 Notes of about 3.3 KB and the 5k-line Note, in a database file.
+do {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("pith-bench-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let (store, _) = try NoteStore.open(at: .file(directory.appendingPathComponent("notes.sqlite")))
+    let corpus = SearchCorpus.notes(count: 2000)
+    for text in corpus {
+        _ = try store.insert(text: text, selection: NoteSelection(location: 0, length: 0), scrollOffset: 0)
+    }
+    let big = try store.insert(text: note, selection: NoteSelection(location: 0, length: 0), scrollOffset: 0)
+    let bytes = corpus.reduce(0) { $0 + $1.utf8.count }
+    print("Search corpus: \(corpus.count) Notes, \(String(format: "%.1f", Double(bytes) / 1e6)) MB, and the Note of \(lines) lines")
+
+    // The first search folds and indexes everything: once, outside the timings of the queries.
+    let first = timed { _ = try? store.search("zzz") }
+    print("first search, indexes every Note".padding(toLength: 34, withPad: " ", startingAt: 0) + "wall \(String(format: "%.0f", first.wall)) ms")
+
+    let queries: [(String, String)] = [
+        ("empty", ""),
+        ("1 character", "ё"),
+        ("2 characters", "ка"),
+        ("rare word", SearchCorpus.rare),
+        ("frequent word", SearchCorpus.frequent),
+        ("two words", "\(SearchCorpus.frequent) север"),
+    ]
+    for (name, query) in queries {
+        var samples: [Sample] = []
+        var count = 0
+        for round in 0..<(warmup + 31) {
+            var failure: Error?
+            let sample = timed { do { count = try store.search(query).count } catch { failure = error } }
+            if let failure { fatalError("search failed: \(failure)") }
+            if round >= warmup { samples.append(sample) }
+        }
+        report("search: \(name) (\(count) found)", samples, median: 16)
+    }
+
+    // The first search after an edit of the big Note folds it again and updates the index.
+    var reindexes: [Sample] = []
+    for round in 0..<(warmup + 31) {
+        let edited = note + String(repeating: "a", count: round % 7 + 1)
+        try store.updateText(id: big.id, text: edited)
+        var failure: Error?
+        let sample = timed { do { _ = try store.search(SearchCorpus.rare) } catch { failure = error } }
+        if let failure { fatalError("search failed: \(failure)") }
+        if round >= warmup { reindexes.append(sample) }
+    }
+    report("search after editing the Note", reindexes, median: 60)
 }
 print()
 
