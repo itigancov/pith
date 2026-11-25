@@ -3,7 +3,7 @@ import Carbon.HIToolbox
 
 /// Registers one global Hotkey with Carbon and calls `onPress` on the main actor when it is pressed.
 /// Carbon needs no Accessibility or Input Monitoring permission.
-final class HotkeyCenter {
+final class HotkeyCenter: HotkeyRegistering {
     var onPress: () -> Void = {}
 
     private var hotkeyRef: EventHotKeyRef?
@@ -12,14 +12,14 @@ final class HotkeyCenter {
     private static let signature: OSType = 0x5049_5448
 
     /// Registers `hotkey` exclusively, so other apps with the same shortcut lose it; replaces an earlier registration.
-    /// Failures are logged with their `OSStatus`.
-    func register(_ hotkey: Hotkey) {
+    /// Returns `false`, and logs the `OSStatus`, if the system refused; then nothing is registered.
+    func register(_ hotkey: Shortcut) -> Bool {
         unregister()
         installHandlerIfNeeded()
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(
             hotkey.keyCode,
-            Hotkey.carbonModifiers(hotkey.modifiers),
+            hotkey.carbonModifiers,
             EventHotKeyID(signature: Self.signature, id: 1),
             GetApplicationEventTarget(),
             OptionBits(kEventHotKeyExclusive),
@@ -28,9 +28,10 @@ final class HotkeyCenter {
         guard status == noErr else {
             NSLog("Pith: cannot register the hotkey (keyCode %u, modifiers %lu): OSStatus %d",
                   hotkey.keyCode, hotkey.modifiers.rawValue, status)
-            return
+            return false
         }
         hotkeyRef = ref
+        return true
     }
 
     /// Frees the shortcut for other apps.

@@ -1,0 +1,71 @@
+import Foundation
+
+/// The states of a Shortcut recorder and what moves it between them, with no AppKit in it.
+/// The view turns events into `Input` and acts on the `Output`.
+nonisolated struct ShortcutRecorderModel: Equatable, Sendable {
+    enum State: Equatable, Sendable {
+        case idle
+        /// Waiting for keys; `error` is the text under the row, `nil` for none.
+        case recording(error: String?)
+    }
+
+    enum Input: Equatable, Sendable {
+        /// Space or Return on the focused recorder.
+        case begin
+        /// A click on the recorder: starts the recording, or cancels it.
+        case click
+        /// A key with the modifiers held.
+        case key(Shortcut)
+        /// Only modifiers changed.
+        case modifiersOnly
+        /// Esc with no modifiers.
+        case escape
+        /// Tab (or ⇧Tab with `reverse`) with no modifiers.
+        case tab(reverse: Bool)
+        /// A click elsewhere, or the window or the recorder lost focus.
+        case lostFocus
+    }
+
+    enum Output: Equatable, Sendable {
+        case none
+        /// The host should try to assign the Shortcut and answer with `resolve`.
+        case commit(Shortcut)
+        /// The recording ended and focus should move on.
+        case moveFocus(reverse: Bool)
+    }
+
+    private(set) var state: State
+
+    init(state: State = .idle) { self.state = state }
+
+    var isRecording: Bool { if case .recording = state { true } else { false } }
+
+    var error: String? { if case .recording(let error) = state { error } else { nil } }
+
+    mutating func handle(_ input: Input) -> Output {
+        switch (state, input) {
+        case (.idle, .begin), (.idle, .click):
+            state = .recording(error: nil)
+        case (.recording, .click), (.recording, .escape), (.recording, .lostFocus):
+            state = .idle
+        case (.recording, .tab(let reverse)):
+            state = .idle
+            return .moveFocus(reverse: reverse)
+        case (.recording, .key(let shortcut)):
+            guard shortcut.hasAnchorModifier else {
+                state = .recording(error: Rejection.needsModifier.message)
+                return .none
+            }
+            return .commit(shortcut)
+        default:
+            break
+        }
+        return .none
+    }
+
+    /// The host's answer to `commit`: the Shortcut is assigned, or the recording goes on with the reason under the row.
+    mutating func resolve(_ rejection: Rejection?) {
+        guard isRecording else { return }
+        state = rejection.map { .recording(error: $0.message) } ?? .idle
+    }
+}

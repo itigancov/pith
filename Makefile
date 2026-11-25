@@ -10,7 +10,7 @@ ifeq ($(CONFIG),Release)
 DESTINATION := -destination 'generic/platform=macOS'
 endif
 
-# `make shots`: SURFACE=context-menu for the open menu, FIXTURE=<path> for another text, OUT=<folder> for the PNGs.
+# `make shots`: SURFACE=context-menu for the open menu, SURFACE=recorder for the Shortcut recorder window (idle, recording, error), FIXTURE=<path> for another text, OUT=<folder> for the PNGs.
 SURFACE ?= window
 SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/Panel.md,$(FIXTURE))
 

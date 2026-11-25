@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: PanelController?
     private var editor: EditorTextView?
     private let hotkeys = HotkeyCenter()
+    private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
+    private var recorderWindow: RecorderTestWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearanceArgument()
@@ -27,10 +29,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = makeMainMenu()
 
         hotkeys.onPress = { [weak panel] in panel?.toggle() }
-        hotkeys.register(.default)
+        // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
+        shortcuts.registerHotkey()
 
-        // Every launch shows the Panel, as the Hotkey does.
-        panel.show()
+        // Every launch shows the Panel, as the Hotkey does; the recorder window takes its place for `-PithShow recorder`.
+        if Surface.requested == .recorder {
+            let state = UserDefaults.standard.string(forKey: "PithRecorderState").flatMap(Self.recorderState)
+            recorderWindow = RecorderTestWindow(store: shortcuts, size: windowSizeArgument(), state: state)
+            recorderWindow?.show()
+        } else {
+            panel.show()
+        }
 
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
         if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
@@ -85,20 +94,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private enum Surface: String {
         case window
         case contextMenu = "context-menu"
+        /// The test window of the Shortcut recorder instead of the Panel.
+        case recorder
 
-        var opensPopup: Bool { self != .window }
+        var opensPopup: Bool { self == .contextMenu }
+
+        static var requested: Surface {
+            UserDefaults.standard.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
+        }
     }
 
-    /// `-PithShow window|context-menu` opens that surface for `make shots`; `window` (the default) opens nothing.
+    /// `-PithRecorderState idle|recording|error` for the recorder window; `error` shows "Used by Bold".
+    private static func recorderState(_ name: String) -> ShortcutRecorderModel.State? {
+        switch name {
+        case "idle": .idle
+        case "recording": .recording(error: nil)
+        case "error": .recording(error: Rejection.usedBy("Bold").message)
+        default: nil
+        }
+    }
+
+    /// `-PithShow window|context-menu|recorder` opens that surface for `make shots`; `window` (the default) opens nothing.
     /// `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, editor: EditorTextView) {
         let defaults = UserDefaults.standard
-        let surface = defaults.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
-        window.display()
+        let surface = Surface.requested
+        // The recorder window is the window to photograph there; the Panel stays hidden.
+        let shotWindow = recorderWindow?.window ?? window
+        shotWindow.display()
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
             var attempts = 0
-            let panelNumber = window.windowNumber
+            let panelNumber = shotWindow.windowNumber
             let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
                 attempts += 1
                 let shots = Self.visibleShots(panel: panelNumber)
@@ -129,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let event, let menu = editor.menu(for: event) {
                     menu.popUp(positioning: nil, at: point, in: editor)
                 }
-            case .window: break
+            case .window, .recorder: break
             }
         }
     }

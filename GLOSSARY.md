@@ -12,6 +12,10 @@ _Avoid_: Document, file, page
 The window Pith shows over all apps when the user presses the Hotkey. It holds one Note at a time and hides when the user leaves it.
 _Avoid_: Window, popup, HUD
 
+**Shortcut**:
+A key combination bound to a command. Seven can be reassigned: the Hotkey and six that work only inside the Panel (new Note, Latest, Search, previous and next Note, move to Trash). Formatting and text-size shortcuts are fixed. Two commands never share one, and each is always set.
+_Avoid_: Keybinding, key equivalent, accelerator
+
 **Hotkey**:
 The one shortcut that works from any app: it shows and hides the Panel. Every other shortcut works only inside the Panel. The user can change it but never leave it empty.
 _Avoid_: Global shortcut, trigger, activation key
