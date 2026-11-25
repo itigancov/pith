@@ -99,6 +99,16 @@ public final class EditorTextView: NSTextView {
         super.writeSelection(to: pboard, types: types.filter(Self.stringTypes.contains))
     }
 
+    // MARK: Layout
+
+    /// Called after the view has laid out its text, which is also when it scrolls to the cursor.
+    public var onLayout: (() -> Void)?
+
+    public override func layout() {
+        super.layout()
+        onLayout?()
+    }
+
     // MARK: Placeholder
 
     public override var string: String {
