@@ -33,6 +33,13 @@ public final class NoteStore {
         CREATE INDEX notes_created_at ON notes(created_at);
         CREATE INDEX notes_updated_at ON notes(updated_at);
         """,
+        // Search: `folded` is the text folded in Swift, `index_dirty` marks Notes whose `folded` and index
+        // entry are out of date. `search` brings them up to date; the first one does it for every old Note.
+        """
+        ALTER TABLE notes ADD COLUMN folded TEXT;
+        ALTER TABLE notes ADD COLUMN index_dirty INTEGER NOT NULL DEFAULT 1;
+        CREATE VIRTUAL TABLE notes_fts USING fts5(folded, content='notes', content_rowid='rowid', tokenize='trigram');
+        """,
     ]
 
     public static var schemaVersion: Int { migrations.count }
@@ -119,13 +126,16 @@ public final class NoteStore {
     /// The Notes of the Stack: not in the Trash, in the order they were created.
     public func stack() throws -> [NoteSummary] {
         try database.query(
-            "SELECT id, created_at, updated_at, deleted_at FROM notes WHERE deleted_at IS NULL ORDER BY created_at, rowid"
-        ) { row in
-            guard let id = UUID(uuidString: row.text(0)) else {
-                throw NoteStoreError.sqlite(code: SQLITE_CORRUPT, message: "unreadable note id \(row.text(0))")
-            }
-            return NoteSummary(id: id, createdAt: row.date(1), updatedAt: row.date(2), deletedAt: row.optionalDate(3))
+            "SELECT id, created_at, updated_at, deleted_at FROM notes WHERE deleted_at IS NULL ORDER BY created_at, rowid",
+            [], summary
+        )
+    }
+
+    private func summary(_ row: Row) throws -> NoteSummary {
+        guard let id = UUID(uuidString: row.text(0)) else {
+            throw NoteStoreError.sqlite(code: SQLITE_CORRUPT, message: "unreadable note id \(row.text(0))")
         }
+        return NoteSummary(id: id, createdAt: row.date(1), updatedAt: row.date(2), deletedAt: row.optionalDate(3))
     }
 
     public func note(id: UUID) throws -> Note? {
@@ -161,7 +171,8 @@ public final class NoteStore {
 
     public func updateText(id: UUID, text: String) throws {
         try database.run(
-            "UPDATE notes SET text = ?, updated_at = ? WHERE id = ?",
+            // `folded` stays as it is: `search` folds the text, so that typing does not.
+            "UPDATE notes SET text = ?, updated_at = ?, index_dirty = 1 WHERE id = ?",
             [.text(text), .int(Self.millis(now())), .text(id.uuidString)]
         )
     }
@@ -176,7 +187,71 @@ public final class NoteStore {
 
     /// For a Note that was left empty. Moving a Note to the Trash is not here.
     public func deletePermanently(id: UUID) throws {
-        try database.run("DELETE FROM notes WHERE id = ?", [.text(id.uuidString)])
+        try database.transaction {
+            // The entry goes from the index first: its row number may be taken by a new Note.
+            let indexed = try database.query(
+                "SELECT rowid, folded FROM notes WHERE id = ? AND folded IS NOT NULL", [.text(id.uuidString)]
+            ) { ($0.int(0), $0.text(1)) }
+            for (rowid, folded) in indexed { try removeFromIndex(rowid: rowid, folded: folded) }
+            try database.run("DELETE FROM notes WHERE id = ?", [.text(id.uuidString)])
+        }
+    }
+
+    // MARK: Search
+
+    /// The Notes of the Stack that contain every word of `query`, newest edit first. An empty query gives
+    /// the whole Stack in that order. Case, diacritics and ё/е are ignored, й is a letter of its own.
+    /// Words of 1–2 characters are looked up by a scan, longer ones by the full-text index.
+    public func search(_ query: String) throws -> [NoteSummary] {
+        let parsed = SearchQuery(query)
+        let columns = "SELECT n.id, n.created_at, n.updated_at, n.deleted_at FROM notes n WHERE n.deleted_at IS NULL"
+        let order = " ORDER BY n.updated_at DESC, n.rowid DESC"
+        if parsed.isEmpty {
+            return try database.query(columns + order, [], summary)
+        }
+
+        try reindex()
+
+        var conditions = ""
+        var binds: [Bind] = []
+        // Words of three characters and more are phrases of one MATCH; a quote in a word is doubled.
+        let long = parsed.words.filter { $0.unicodeScalars.count >= Self.trigramLength }
+        if !long.isEmpty {
+            conditions += " AND n.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?)"
+            binds.append(.text(long.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: " AND ")))
+        }
+        for word in parsed.words where word.unicodeScalars.count < Self.trigramLength {
+            conditions += " AND instr(n.folded, ?) > 0"
+            binds.append(.text(word))
+        }
+        return try database.query(columns + conditions + order, binds, summary)
+    }
+
+    /// Shorter words are not in the trigram index.
+    private static let trigramLength = 3
+
+    /// Folds the Notes that were edited since the last search and updates their entries of the index.
+    private func reindex() throws {
+        let stale = try database.query("SELECT rowid, text, folded FROM notes WHERE index_dirty = 1") { row in
+            (rowid: row.int(0), folded: Folding.foldedString(row.text(1)), previous: row.isNull(2) ? nil : row.text(2))
+        }
+        if stale.isEmpty { return }
+        try database.transaction {
+            for note in stale {
+                if let previous = note.previous { try removeFromIndex(rowid: note.rowid, folded: previous) }
+                try database.run(
+                    "UPDATE notes SET folded = ?, index_dirty = 0 WHERE rowid = ?", [.text(note.folded), .int(note.rowid)]
+                )
+                try database.run("INSERT INTO notes_fts(rowid, folded) VALUES(?, ?)", [.int(note.rowid), .text(note.folded)])
+            }
+        }
+    }
+
+    /// An external-content index forgets an entry only if told the text it was made of.
+    private func removeFromIndex(rowid: Int64, folded: String) throws {
+        try database.run(
+            "INSERT INTO notes_fts(notes_fts, rowid, folded) VALUES('delete', ?, ?)", [.int(rowid), .text(folded)]
+        )
     }
 
     // MARK: Helpers
