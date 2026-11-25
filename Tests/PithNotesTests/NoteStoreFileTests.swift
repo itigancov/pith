@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import PithNotes
 
@@ -61,6 +62,26 @@ import Testing
         #expect(try store.note(id: id)?.selection == NoteSelection(location: 2, length: 1))
         // A migration applied twice would fail on its CREATE TABLE.
         #expect(try store.queryInt("PRAGMA user_version") == NoteStore.schemaVersion)
+    }
+
+    @Test func notesOfTheFirstSchemaAreSearchableAfterMigration() throws {
+        // A database as the first schema left it: one table, no search columns.
+        var handle: OpaquePointer?
+        #expect(sqlite3_open(databaseURL.path, &handle) == SQLITE_OK)
+        let sql = NoteStore.migrations[0] + """
+            ;INSERT INTO notes(id, text, created_at, updated_at) VALUES('\(UUID().uuidString)', 'Старая заметка про Ёлку', 1000, 1000);
+            INSERT INTO notes(id, text, created_at, updated_at) VALUES('\(UUID().uuidString)', 'another café note', 2000, 2000);
+            PRAGMA user_version = 1;
+            """
+        #expect(sqlite3_exec(handle, sql, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(handle)
+
+        let (store, _) = try open()
+        #expect(try store.queryInt("PRAGMA user_version") == NoteStore.schemaVersion)
+        #expect(try store.search("елк").count == 1)
+        #expect(try store.search("cafe").count == 1)
+        #expect(try store.search("заметк").count == 1)
+        #expect(try store.search("").count == 2)
     }
 
     @Test func databaseOfANewerSchemaIsLeftAlone() throws {
