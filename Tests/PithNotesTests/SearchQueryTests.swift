@@ -58,6 +58,8 @@ import Testing
         #expect(SearchQuery("abc bcd").ranges(in: "abcd") == [0..<4])
         #expect(SearchQuery("ab cd").ranges(in: "abcd") == [0..<4])
         #expect(SearchQuery("ab ab").ranges(in: "ab ab") == [0..<2, 3..<5])
+        // The same word overlapping itself.
+        #expect(SearchQuery("aba").ranges(in: "ababa") == [0..<5])
     }
 
     @Test func noMatchGivesNoRanges() {

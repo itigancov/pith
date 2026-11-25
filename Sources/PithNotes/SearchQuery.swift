@@ -38,10 +38,9 @@ nonisolated public struct SearchQuery: Sendable, Equatable {
             while index <= last {
                 if haystack[index] == first, haystack[index..<index + count].elementsEqual(word) {
                     found.append(folded.originalRange(ofFolded: index..<index + count))
-                    index += count
-                } else {
-                    index += 1
                 }
+                // One step, so that "aba" is found twice in "ababa"; the ranges merge below.
+                index += 1
             }
         }
         found.sort { $0.lowerBound < $1.lowerBound }

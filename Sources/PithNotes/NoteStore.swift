@@ -215,17 +215,20 @@ public final class NoteStore {
         var conditions = ""
         var binds: [Bind] = []
         // Words of three characters and more are phrases of one MATCH; a quote in a word is doubled.
-        let long = parsed.words.filter { $0.unicodeScalars.count >= 3 }
+        let long = parsed.words.filter { $0.unicodeScalars.count >= Self.trigramLength }
         if !long.isEmpty {
             conditions += " AND n.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?)"
             binds.append(.text(long.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: " AND ")))
         }
-        for word in parsed.words where word.unicodeScalars.count < 3 {
+        for word in parsed.words where word.unicodeScalars.count < Self.trigramLength {
             conditions += " AND instr(n.folded, ?) > 0"
             binds.append(.text(word))
         }
         return try database.query(columns + conditions + order, binds, summary)
     }
+
+    /// Shorter words are not in the trigram index.
+    private static let trigramLength = 3
 
     /// Folds the Notes that were edited since the last search and updates their entries of the index.
     private func reindex() throws {

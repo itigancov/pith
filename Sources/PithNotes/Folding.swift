@@ -33,7 +33,7 @@ nonisolated public enum Folding {
         fold(text, recordPositions: false).string
     }
 
-    private static let ye: Unicode.Scalar = "й"
+    private static let shortI: Unicode.Scalar = "й"
     private static let i: Unicode.Scalar = "и"
     private static let breve: Unicode.Scalar = "\u{306}"
 
@@ -69,7 +69,7 @@ nonisolated public enum Folding {
             }
 
             if scalar == breve, afterI {
-                scalars[scalars.count - 1] = ye
+                scalars[scalars.count - 1] = shortI
                 if recordPositions { ends[ends.count - 1] = offset }
                 afterI = false
                 continue
@@ -101,7 +101,7 @@ nonisolated public enum Folding {
 
     private static func foldedScalars(of scalar: Unicode.Scalar) -> [Unicode.Scalar] {
         let string = String(scalar)
-        if string.lowercased() == String(ye) { return [ye] }
+        if string.lowercased() == String(shortI) { return [shortI] }
         let folded = string.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
         // A lone mark of the "Combining Diacritical Marks" block goes with the diacritics.
         return folded.unicodeScalars.filter { !(0x300...0x36F).contains($0.value) }
