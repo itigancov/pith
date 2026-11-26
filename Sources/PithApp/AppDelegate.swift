@@ -13,9 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = HotkeyCenter()
     private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
     private var recorderWindow: RecorderTestWindow?
+    private var settings: SettingsWindowController?
+    private var appearance: AppearanceModel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        applyAppearanceArgument()
+        // `-PithAppearance light|dark` forces an appearance without storing it; without it the choice of Settings, else the system's.
+        let appearance = AppearanceModel(
+            initial: Appearance(argument: UserDefaults.standard.string(forKey: "PithAppearance")), apply: AppearanceModel.applyToApp
+        )
+        self.appearance = appearance
 
         // A fixture lives in memory; the open Note of the real defaults is not its to change.
         let screen = NoteScreen(
@@ -23,10 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defaults: UserDefaults.standard.string(forKey: "PithFixture") == nil ? .standard : nil
         )
         self.noteScreen = screen
-        // `-PithLatest newest|last-edited` sets what ⌘1 jumps to, without storing it.
-        if let mode = UserDefaults.standard.string(forKey: "PithLatest").flatMap(Latest.init(rawValue:)) {
-            screen.latestMeans = { mode }
-        }
+        // `-PithLatest newest|last-edited` sets what ⌘1 jumps to, without storing it; Settings changes it either way.
+        let latestMeans = LatestMeansModel(initial: UserDefaults.standard.string(forKey: "PithLatest").flatMap(Latest.init(rawValue:)))
+        screen.latestMeans = { latestMeans.mode }
 
         let panel = PanelController(note: screen, fixedSize: windowSizeArgument())
         self.panelController = panel
@@ -48,6 +53,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menus = AppMenus(shortcuts: shortcuts, panel: panel, note: screen, search: search, trash: trash, textSize: textSize)
         self.menus = menus
         panel.panel.onKeyEquivalent = { [weak menus] event in menus?.performKeyEquivalent(event) ?? false }
+        let context = SettingsContext(
+            shortcuts: shortcuts, textSize: textSize, appearance: appearance, latestMeans: latestMeans,
+            trash: SettingsTrash(store: { [weak screen] in screen?.store })
+        )
+        let settings = SettingsWindowController(context: context)
+        settings.hidePanel = { [weak panel] in panel?.hide() }
+        settings.onTrashEmptied = { [weak panel] in (panel?.topScreen as? TrashScreen)?.refresh() }
+        panel.keepsAppVisible = { [weak settings] in settings?.isVisible ?? false }
+        self.settings = settings
+        menus.openSettings = { [weak settings] in settings?.show() }
         NSApp.mainMenu = menus.makeMainMenu()
         statusItem = menus.makeStatusItem()
 
@@ -60,7 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts.registerHotkey()
 
         // Every launch shows the Panel, as the Hotkey does; the recorder window takes its place for `-PithShow recorder`.
-        if Surface.requested == .recorder {
+        if let tab = Surface.requested.settingsTab {
+            settings.show(tab: tab, remembering: false)
+        } else if Surface.requested == .recorder {
             let state = UserDefaults.standard.string(forKey: "PithRecorderState").flatMap(Self.recorderState)
             recorderWindow = RecorderTestWindow(store: shortcuts, size: windowSizeArgument(), state: state)
             recorderWindow?.show()
@@ -217,12 +234,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case trash
         case trashConfirm = "trash-confirm"
         case trashDelete = "trash-delete"
+        /// The Settings window instead of the Panel, on General and on Shortcuts.
+        case settings
+        case settingsShortcuts = "settings-shortcuts"
+
+        /// The tab of the Settings window when that is the surface.
+        var settingsTab: SettingsTab? {
+            switch self {
+            case .settings: .general
+            case .settingsShortcuts: .shortcuts
+            default: nil
+            }
+        }
 
         var opensPopup: Bool { self == .contextMenu || self == .contextMenuSpelling || self == .menuBar }
         /// A sheet slides in, and Search or the Trash comes up after the window does; the window is captured only after they have.
         var opensSheet: Bool {
             switch self {
-            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete: true
+            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete, .settings, .settingsShortcuts: true
             default: false
             }
         }
@@ -242,15 +271,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The Settings window when it is the surface; it is on screen already.
+    private func settingsShotWindow() -> NSWindow? {
+        guard Surface.requested.settingsTab != nil else { return nil }
+        return NSApp.windows.first { $0.windowNumber == settings?.windowNumber }
+    }
+
     /// `-PithShow window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
-    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
+    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
     /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
         let surface = Surface.requested
         let editor = screen.editor
         // The recorder window is the window to photograph there; the Panel stays hidden.
-        let shotWindow = recorderWindow?.window ?? window
+        let shotWindow = recorderWindow?.window ?? settingsShotWindow() ?? window
         shotWindow.display()
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
@@ -300,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     (self?.panelController?.topScreen as? SearchScreen)?.selectRows(from: 1, to: 3)
                 }
-            case .window, .recorder: break
+            case .window, .recorder, .settings, .settingsShortcuts: break
             case .deleteUndo:
                 screen.moveToTrash()
                 // The mouse on the toast holds it, so the shot finds it there.
@@ -360,15 +395,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   let id = info[kCGWindowNumber as String] as? Int, let layer = info[kCGWindowLayer as String] as? Int else { return nil }
             if id == panel { return ("window", id) }
             return layer >= menuLayer ? ("menu", id) : nil
-        }
-    }
-
-    /// `-PithAppearance light|dark` forces an appearance; without it the app follows the system.
-    private func applyAppearanceArgument() {
-        switch UserDefaults.standard.string(forKey: "PithAppearance") {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: break
         }
     }
 }

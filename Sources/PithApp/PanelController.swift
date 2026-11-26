@@ -124,6 +124,9 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
         presentNextAlert()
     }
 
+    /// Whether another window of Pith (Settings) is open, so that hiding the Panel must not hide the app.
+    var keepsAppVisible: () -> Bool = { false }
+
     /// Fades the Panel out and orders it out; if Pith was active (say, opened from Finder), gives focus back.
     func hide() {
         guard isShown else { return }
@@ -136,7 +139,7 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
             guard let self, self.transition == current else { return }
             self.panel.orderOut(nil)
             self.panel.alphaValue = 1
-            if NSApp.isActive { NSApp.hide(nil) }
+            if NSApp.isActive, !self.keepsAppVisible() { NSApp.hide(nil) }
         }
     }
 

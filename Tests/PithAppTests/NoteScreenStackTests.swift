@@ -199,6 +199,26 @@ struct NoteScreenStackTests {
         _ = window
     }
 
+    @Test func changingWhatLatestMeansTakesEffectAtTheNextJump() throws {
+        let first = try insert("one")
+        try insert("two")
+        try insert("three")
+        let (screen, window) = makeScreen()
+        let latestMeans = LatestMeansModel(defaults: defaults)
+        screen.latestMeans = { latestMeans.mode }
+        screen.show(noteID: first.id)
+        screen.goToLatest()
+        #expect(screen.editor.string == "three")
+        latestMeans.mode = .lastEdited
+        screen.show(noteID: first.id)
+        clock.advance(100)
+        type("!", in: screen)
+        screen.nextNote()
+        screen.goToLatest()
+        #expect(screen.editor.string == "!one")
+        _ = window
+    }
+
     @Test func showNoteIDPagesToThatNote() throws {
         let first = try insert("one")
         try insert("two")
