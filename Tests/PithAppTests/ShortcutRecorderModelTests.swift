@@ -83,6 +83,45 @@ struct ShortcutRecorderModelTests {
         #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Tab), modifiers: .shift) == .tab(reverse: true))
     }
 
+    // MARK: Return in the large recorder
+
+    private func large(_ state: ShortcutRecorderModel.State = .idle) -> ShortcutRecorderModel {
+        ShortcutRecorderModel(state: state, returnPerformsDefault: true)
+    }
+
+    @Test func bareReturnIsItsOwnInput() {
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Return), modifiers: []) == .bareReturn)
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_ANSI_KeypadEnter), modifiers: .capsLock) == .bareReturn)
+    }
+
+    @Test func returnWithAModifierIsAnOrdinaryKey() {
+        let shortcut = Shortcut(keyCode: UInt32(kVK_Return), modifiers: .command)
+        #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Return), modifiers: .command) == .key(shortcut))
+        var model = large(.recording(error: nil))
+        #expect(model.handle(.key(shortcut)) == .commit(shortcut))
+    }
+
+    @Test func bareReturnWhileRecordingCancelsAndPerformsTheDefault() {
+        var model = large(.recording(error: "Used by Bold"))
+        #expect(model.handle(.bareReturn) == .performDefault)
+        #expect(model.state == .idle)
+    }
+
+    @Test func bareReturnAtRestPerformsTheDefault() {
+        var model = large()
+        #expect(model.handle(.bareReturn) == .performDefault)
+        #expect(model.state == .idle)
+    }
+
+    @Test func theCompactRecorderKeepsItsReturn() {
+        var model = ShortcutRecorderModel()
+        #expect(model.handle(.bareReturn) == .none)
+        #expect(model.state == .recording(error: nil))
+        // Recording, a bare Return is a key with no modifier, as before.
+        #expect(model.handle(.bareReturn) == .none)
+        #expect(model.state == .recording(error: "Use ⌘, ⌥ or ⌃ in the shortcut"))
+    }
+
     @Test func commandEscapeAndCommandTabAreOrdinaryKeys() {
         let escape = Shortcut(keyCode: UInt32(kVK_Escape), modifiers: .command)
         #expect(ShortcutRecorderModel.Input(keyCode: UInt32(kVK_Escape), modifiers: .command) == .key(escape))

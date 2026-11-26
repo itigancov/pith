@@ -252,6 +252,12 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate, ToastHost {
         turn { [self] stack in stack.latest(currentLatest(of: stack)) }
     }
 
+    /// Opens a Note just put into the store (the welcome Note): the Stack takes it in and it is the open one, remembered as such.
+    func openInserted(id: UUID) {
+        reloadStack(activateFooter: false)
+        show(noteID: id)
+    }
+
     /// Goes to the Note `id`, as a page turn: the way back from Search and the Trash.
     func show(noteID id: UUID) { turn { $0.show(id) } }
 

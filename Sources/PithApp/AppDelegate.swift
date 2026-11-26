@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindowController?
     private var appearance: AppearanceModel?
     private var loginItem: LoginItem?
+    private var onboarding: OnboardingWindowController?
+    private var onboardingModel: OnboardingModel?
     /// The system started Pith as a login item: it comes up quietly, without the Panel.
     private var launchedAsLoginItem = false
 
@@ -77,7 +79,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = SettingsWindowController(context: context)
         settings.hidePanel = { [weak panel] in panel?.hide() }
         settings.onTrashEmptied = { [weak panel] in (panel?.topScreen as? TrashScreen)?.refresh() }
-        panel.keepsAppVisible = { [weak settings] in settings?.isVisible ?? false }
+        // A surface for a screenshot writes nothing to the real defaults: the onboarding's flag goes to a throwaway domain.
+        let onboardingDefaults = Surface.requested == .window ? UserDefaults.standard : Self.throwawayDefaults()
+        let onboardingModel = OnboardingModel(
+            defaults: onboardingDefaults, loginItem: loginItem, shortcuts: shortcuts,
+            store: { [weak screen] in screen?.store },
+            showPanel: { [weak panel] in panel?.show() },
+            openNote: { [weak screen] in screen?.openInserted(id: $0) },
+            closeWindow: { [weak self] in self?.onboarding?.close() }
+        )
+        self.onboardingModel = onboardingModel
+        let onboarding = OnboardingWindowController(model: onboardingModel)
+        self.onboarding = onboarding
+        panel.keepsAppVisible = { [weak settings, weak onboarding] in (settings?.isVisible ?? false) || (onboarding?.isVisible ?? false) }
+        settings.keepsRegularPolicy = { [weak onboarding] in onboarding?.isVisible ?? false }
+        onboarding.keepsRegularPolicy = { [weak settings] in settings?.isVisible ?? false }
         self.settings = settings
         menus.openSettings = { [weak settings] in settings?.show() }
         NSApp.mainMenu = menus.makeMainMenu()
@@ -90,17 +106,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before the Hotkey: it must not open the Panel behind the alert.
         offerMove(from: location)
 
-        hotkeys.onPress = { [weak panel] in panel?.toggle() }
+        // While the onboarding is open the Hotkey brings it forward; the Panel stays out of its way.
+        hotkeys.onPress = { [weak panel, weak onboarding] in
+            if let onboarding, onboarding.isVisible { onboarding.bringForward() } else { panel?.toggle() }
+        }
         // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
         shortcuts.registerHotkey()
 
         // Every launch shows the Panel, as the Hotkey does, except the one of a login; the recorder window takes its place for `-PithShow recorder`.
+        // The first launch shows the onboarding instead, and its Open Pith shows the Panel.
         if let tab = Surface.requested.settingsTab {
             settings.show(tab: tab, remembering: false)
         } else if Surface.requested == .recorder {
             let state = UserDefaults.standard.string(forKey: "PithRecorderState").flatMap(Self.recorderState)
             recorderWindow = RecorderTestWindow(store: shortcuts, size: windowSizeArgument(), state: state)
             recorderWindow?.show()
+        } else if let step = Surface.requested.onboardingStep {
+            onboardingModel.show(step: step)
+            onboarding.show()
+        } else if onboardingModel.shouldShow(
+            launchedAsLoginItem: launchedAsLoginItem, fixture: UserDefaults.standard.string(forKey: "PithFixture") != nil, surface: Surface.requested != .window
+        ) {
+            onboarding.show()
         } else if !launchedAsLoginItem {
             panel.show()
         }
@@ -272,6 +299,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case settingsOutsideApplications = "settings-outside-applications"
         /// The alert "Move Pith to Applications?", which moves nothing here.
         case moveAlert = "move-alert"
+        /// The onboarding on its steps, the second one also with Open at login unavailable (`-PithLoginItemState outside`).
+        case onboardingHotkey = "onboarding-hotkey"
+        case onboardingReady = "onboarding-ready"
+        case onboardingReadyOutside = "onboarding-ready-outside"
+        /// The Panel on the welcome Note, put into an empty database as finishing the onboarding does.
+        case welcome
+
+        /// The step of the onboarding window when that is the surface.
+        var onboardingStep: OnboardingModel.Step? {
+            switch self {
+            case .onboardingHotkey: .hotkey
+            case .onboardingReady, .onboardingReadyOutside: .ready
+            default: nil
+            }
+        }
 
         /// The tab of the Settings window when that is the surface.
         var settingsTab: SettingsTab? {
@@ -287,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var opensSheet: Bool {
             switch self {
             case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete, .settings, .settingsShortcuts,
-                 .settingsLoginApproval, .settingsOutsideApplications, .moveAlert: true
+                 .settingsLoginApproval, .settingsOutsideApplications, .moveAlert, .onboardingHotkey, .onboardingReady, .onboardingReadyOutside, .welcome: true
             default: false
             }
         }
@@ -313,15 +355,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return NSApp.windows.first { $0.windowNumber == settings?.windowNumber }
     }
 
+    /// The onboarding window when it is the surface.
+    private func onboardingShotWindow() -> NSWindow? {
+        guard Surface.requested.onboardingStep != nil else { return nil }
+        return NSApp.windows.first { $0.windowNumber == onboarding?.windowNumber }
+    }
+
+    /// A defaults domain that is emptied at every launch, for what a screenshot must not leave in the real one.
+    private static func throwawayDefaults() -> UserDefaults {
+        let domain = "io.github.itigancov.pith.shots"
+        let defaults = UserDefaults(suiteName: domain) ?? .standard
+        defaults.removePersistentDomain(forName: domain)
+        return defaults
+    }
+
     /// `-PithShow window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
-    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
+    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert|
+    /// onboarding-hotkey|onboarding-ready|onboarding-ready-outside|welcome` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
     /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
         let surface = Surface.requested
         let editor = screen.editor
         // The recorder window is the window to photograph there; the Panel stays hidden.
-        let shotWindow = recorderWindow?.window ?? settingsShotWindow() ?? window
+        let shotWindow = recorderWindow?.window ?? settingsShotWindow() ?? onboardingShotWindow() ?? window
         shotWindow.display()
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
@@ -372,7 +429,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     (self?.panelController?.topScreen as? SearchScreen)?.selectRows(from: 1, to: 3)
                 }
-            case .window, .recorder, .settings, .settingsShortcuts, .settingsLoginApproval, .settingsOutsideApplications: break
+            case .window, .recorder, .settings, .settingsShortcuts, .settingsLoginApproval, .settingsOutsideApplications,
+                 .onboardingHotkey, .onboardingReady, .onboardingReadyOutside: break
+            case .welcome:
+                // As finishing the onboarding does; the flag goes to the throwaway domain.
+                self?.onboardingModel?.skip()
             case .moveAlert:
                 // Modal: the shots are reported from a timer. Whatever the button, nothing is moved.
                 NSApp.activate()

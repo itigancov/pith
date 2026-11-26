@@ -100,6 +100,16 @@ final class ShortcutStore {
         overrides[action] ?? action.defaultShortcut
     }
 
+    /// The chips of the row's Shortcut, as the recorder shows them.
+    func chips(for action: ShortcutAction) -> [String] {
+        shortcut(for: action).chips(layout: layout)
+    }
+
+    /// What VoiceOver reads for the row's Shortcut, such as "Option Space".
+    func spokenName(for action: ShortcutAction) -> String {
+        shortcut(for: action).spokenName(layout: layout)
+    }
+
     /// What a menu item of `action` gets as its key equivalent and mask; `nil` if the layout has no character for the key.
     func menuKey(for action: ShortcutAction) -> (key: String, modifiers: NSEvent.ModifierFlags)? {
         let shortcut = shortcut(for: action)

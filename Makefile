@@ -12,7 +12,8 @@ DESTINATION := -destination 'generic/platform=macOS'
 endif
 
 # `make shots`: SURFACE=context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|search-empty|
-# search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert
+# search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert|
+# onboarding-hotkey|onboarding-ready|onboarding-ready-outside|welcome
 # for another surface, FIXTURE=<path> for another text (`Fixtures/Empty.md` for the placeholder), OUT=<folder> for the PNGs.
 SURFACE ?= window
 SHOTS_FIXTURES_context-menu-spelling := ContextMenuSpelling.md
@@ -32,6 +33,10 @@ SHOTS_FIXTURES_settings := Trash.json
 SHOTS_FIXTURES_settings-shortcuts := Trash.json
 SHOTS_FIXTURES_settings-login-approval := Trash.json
 SHOTS_FIXTURES_settings-outside-applications := Trash.json
+SHOTS_FIXTURES_onboarding-hotkey := Empty.md
+SHOTS_FIXTURES_onboarding-ready := Empty.md
+SHOTS_FIXTURES_onboarding-ready-outside := Empty.md
+SHOTS_FIXTURES_welcome := Empty.md
 SHOTS_DEFAULT_FIXTURE := $(or $(SHOTS_FIXTURES_$(SURFACE)),Panel.md)
 SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/$(SHOTS_DEFAULT_FIXTURE),$(FIXTURE))
 
