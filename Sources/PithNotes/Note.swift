@@ -43,7 +43,7 @@ nonisolated public struct Note: Sendable, Equatable {
         return ""
     }
 
-    private static func withoutMarker(_ line: String) -> String {
+    static func withoutMarker(_ line: String) -> String {
         var rest = Substring(line)
         if rest.first == ">" {
             return rest.dropFirst().first == " " ? String(rest.dropFirst(2)) : line

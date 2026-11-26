@@ -5,6 +5,7 @@ import PithNotes
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: PanelController?
     private var noteScreen: NoteScreen?
+    private var searchController: SearchController?
     private let textSize = TextSizeModel(initial: AppDelegate.textSizeArgument())
     private let hotkeys = HotkeyCenter()
     private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
@@ -19,6 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = PanelController(note: screen, fixedSize: windowSizeArgument())
         self.panelController = panel
         screen.alerts = panel
+        let search = SearchController(stack: panel.screens, note: screen)
+        search.isBlocked = { [weak panel] in panel?.panel.attachedSheet != nil }
+        if let now = nowArgument() { search.now = { now } }
+        self.searchController = search
         panel.onWillHide = { [weak screen] in screen?.flush() }
         NSApp.mainMenu = makeMainMenu()
 
@@ -53,6 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         noteScreen?.flush()
     }
 
+    /// `-PithNow <ISO 8601>` is "now" for the times of Search's rows, so that a screenshot shows "10:42" and "Yesterday".
+    private func nowArgument() -> Date? {
+        UserDefaults.standard.string(forKey: "PithNow").flatMap(Fixture.date(from:))
+    }
+
     /// `-PithTextSize <n>` starts at that size instead of the stored one, and stores nothing.
     private static func textSizeArgument() -> Int? {
         let value = UserDefaults.standard.integer(forKey: "PithTextSize")
@@ -60,12 +70,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Where the notes are. With `-PithFixture <path>` it is an in-memory database holding one Note, that UTF-8 file's text
-    /// with the selection of `-PithSelection "<location> <length>"`; nothing goes to disk. If the file cannot be read, the
-    /// database is empty. Without the flag it is the real database in Application Support.
+    /// with the selection of `-PithSelection "<location> <length>"`, or, for a `.json` file, the Notes in it (`Fixture`);
+    /// nothing goes to disk. If the file cannot be read, the database is empty. Without the flag it is the real database in Application Support.
     private func makeStoreOpener() -> () throws -> (store: NoteStore, recovery: CorruptionRecovery?) {
         let defaults = UserDefaults.standard
         guard let path = defaults.string(forKey: "PithFixture") else {
             return { try NoteStore.open(at: .file(NoteStore.defaultFileURL)) }
+        }
+        if path.hasSuffix(".json") {
+            let entries: [Fixture.Entry]
+            do {
+                entries = try Fixture.parse(json: Data(contentsOf: URL(fileURLWithPath: path)))
+            } catch {
+                NSLog("Pith: cannot read fixture %@: %@", path, String(describing: error))
+                return { try NoteStore.open(at: .memory) }
+            }
+            return { try Fixture.openStore(entries: entries) }
         }
         let text: String?
         do {
@@ -123,10 +143,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case saveFailure = "save-failure"
         /// The test window of the Shortcut recorder instead of the Panel.
         case recorder
+        /// Search with an empty query, with the query "region" (two Notes), with the query "invoice" (none).
+        case searchAll = "search-all"
+        case searchResults = "search-results"
+        case searchEmpty = "search-empty"
 
         var opensPopup: Bool { self == .contextMenu }
-        /// A sheet slides in; the window is captured only after it has.
-        var opensSheet: Bool { self == .saveFailure }
+        /// A sheet slides in, and Search comes up after the window does; the window is captured only after they have.
+        var opensSheet: Bool { self == .saveFailure || self == .searchAll || self == .searchResults || self == .searchEmpty }
 
         static var requested: Surface {
             UserDefaults.standard.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
@@ -143,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithShow window|context-menu|text-size|save-failure|recorder` opens that surface for `make shots`; `window` (the
+    /// `-PithShow window|context-menu|text-size|save-failure|recorder|search-all|search-results|search-empty` opens that surface for `make shots`; `window` (the
     /// default) opens nothing. `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
@@ -193,9 +217,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 screen.showSizeHUD(size: self?.textSize.size ?? TextSizeModel.defaultSize, autoHide: false)
             case .saveFailure:
                 self?.panelController?.presentSaveFailureAlert(reason: "SQLite error 13: database or disk is full.")
+            case .searchAll: self?.showSearch(query: "")
+            case .searchResults: self?.showSearch(query: "region")
+            case .searchEmpty: self?.showSearch(query: "invoice")
             case .window, .recorder: break
             }
         }
+    }
+
+    private func showSearch(query: String) {
+        searchController?.find(nil)
+        guard let search = panelController?.topScreen as? SearchScreen else { return }
+        search.setQuery(query)
+        // The caret after the text, as on the artboards, not the whole text selected.
+        if let editor = search.field.currentEditor() { editor.selectedRange = NSRange(location: (query as NSString).length, length: 0) }
     }
 
     private final class Counter: @unchecked Sendable {
@@ -242,6 +277,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(.separator())
+        // Ticket 10 may rearrange these.
+        let findItem = edit.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
+        let findMenu = NSMenu(title: "Find")
+        findItem.submenu = findMenu
+        let finds: [(String, Selector, String, NSEvent.ModifierFlags)] = [
+            ("Find…", #selector(SearchController.find(_:)), "f", [.command]),
+            ("Find Next", #selector(SearchController.findNext(_:)), "g", [.command]),
+            ("Find Previous", #selector(SearchController.findPrevious(_:)), "g", [.command, .shift]),
+        ]
+        for (title, action, key, modifiers) in finds {
+            let item = findMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            item.target = searchController
+        }
 
         let format = submenu(in: main, title: "Format")
         let inline: [(String, Selector, String, NSEvent.ModifierFlags)] = [

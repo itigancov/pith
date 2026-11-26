@@ -16,7 +16,7 @@ enum PanelVisibility {
 final class PanelController: NSObject, NSWindowDelegate, StorageAlerts {
     let panel: PithPanel
     private let content: PanelContentView
-    private let screens: ScreenStack
+    let screens: ScreenStack
     /// Called before the Panel starts hiding, for saving the Note at once.
     var onWillHide: () -> Void = {}
 

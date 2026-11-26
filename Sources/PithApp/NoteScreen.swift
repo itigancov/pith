@@ -35,6 +35,8 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     private let textSize: TextSizeModel
 
     private var autosaver: Autosaver?
+    /// The notes, once they are open; `nil` while they are not.
+    private(set) var store: NoteStore?
     /// The open Note; `nil` for a Blank.
     private var noteID: UUID?
     /// One history per slot, a Note or the Blank; it lives for the session only.
@@ -122,11 +124,13 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
             let latest = try store.stack().last
             let note = try latest.flatMap { try store.note(id: $0.id) }
             self.autosaver = autosaver
+            self.store = store
             show(note)
             editor.isEditable = true
             if let recovery { alerts?.presentCorruptionRecoveryAlert(movedFile: recovery.movedFile) }
         } catch {
             autosaver = nil
+            store = nil
             editor.isEditable = false
             let canRetry: Bool
             if case NoteStoreError.newerSchema = error { canRetry = false } else { canRetry = true }
@@ -148,6 +152,36 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         editor.setSelectedRange(NSRange(location: location, length: selectionLength))
         pendingScroll = CGFloat(note?.scrollOffset ?? 0)
         applyPendingScroll()
+    }
+
+    /// Saves the open Note and opens the one with `id`. With a `query` the cursor goes to its first match, selected and
+    /// in view; without one the Note comes back with the cursor and scroll position it was left with.
+    /// Does nothing when the Note is gone.
+    func open(id: UUID, query: SearchQuery? = nil) {
+        flush()
+        guard let note = (try? store?.note(id: id)) ?? nil else { return }
+        show(note)
+        guard let query, let first = query.ranges(in: note.text).first else { return }
+        editor.setSelectedRange(NSRange(location: first.lowerBound, length: first.count))
+        pendingScroll = nil
+        scrollSelectionToVisible()
+    }
+
+    /// Selects the match of `query` after the selection (before it, `backwards`), wrapping around at the ends of the
+    /// text. `false` when the open Note has none.
+    func findNext(_ query: SearchQuery, backwards: Bool) -> Bool {
+        let ranges = query.ranges(in: editor.string)
+        guard !ranges.isEmpty else { return false }
+        let selection = editor.selectedRange()
+        let found: Range<Int>
+        if backwards {
+            found = ranges.last { $0.upperBound <= selection.location } ?? ranges[ranges.count - 1]
+        } else {
+            found = ranges.first { $0.lowerBound >= NSMaxRange(selection) } ?? ranges[0]
+        }
+        editor.setSelectedRange(NSRange(location: found.lowerBound, length: found.count))
+        scrollSelectionToVisible()
+        return true
     }
 
     // MARK: Scroll position
