@@ -2,7 +2,7 @@
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
 # Environment: SURFACE (window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|
-# search-results|search-empty), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
+# search-results|search-empty|delete-undo|trash|trash-confirm|trash-delete), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
@@ -37,7 +37,9 @@ esac
 
 # The times of Search's rows are counted from this moment: the first row of Search-All reads "10:42".
 now_args=()
-[[ "$surface" == search-* ]] && now_args=(-PithNow 2026-11-26T11:00:00)
+case "$surface" in
+    search-* | delete-undo | trash | trash-*) now_args=(-PithNow 2026-11-26T11:00:00) ;;
+esac
 
 log="$(mktemp)"
 pid=""

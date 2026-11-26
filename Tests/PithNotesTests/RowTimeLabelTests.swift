@@ -49,4 +49,28 @@ import Testing
     @Test func theDayBeforeYesterdayIsADate() {
         #expect(label("2026-11-24T12:00:00Z", now: now, locale: "en_US") == "Nov 24")
     }
+
+    // MARK: Deleted
+
+    private func deleted(_ date: String, locale: String = "en_GB") -> String {
+        RowTimeLabel.deleted(
+            for: self.date(date), now: self.date("2026-11-26T11:00:00Z"), locale: Locale(identifier: locale), calendar: calendar
+        )
+    }
+
+    @Test func deletedTodayHasTheClock() {
+        #expect(deleted("2026-11-26T10:42:00Z") == "Deleted today, 10:42")
+    }
+
+    @Test func deletedYesterdayIsTheWord() {
+        #expect(deleted("2026-11-25T23:59:00Z") == "Deleted yesterday")
+    }
+
+    @Test func deletedThisYearIsMonthAndDay() {
+        #expect(deleted("2026-11-14T09:00:00Z", locale: "en_US") == "Deleted Nov 14")
+    }
+
+    @Test func deletedEarlierHasTheYear() {
+        #expect(deleted("2025-11-14T09:00:00Z", locale: "en_US") == "Deleted Nov 14, 2025")
+    }
 }

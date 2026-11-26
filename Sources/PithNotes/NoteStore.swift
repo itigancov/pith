@@ -185,16 +185,71 @@ public final class NoteStore {
         )
     }
 
-    /// For a Note that was left empty. Moving a Note to the Trash is not here.
-    public func deletePermanently(id: UUID) throws {
+    // MARK: Trash
+
+    /// Puts the Notes `ids` in the Trash in one transaction, all with the same `deletedAt`, which is returned. `updatedAt`
+    /// stays. Ids that are not there or already in the Trash are skipped. The search index is not touched: `search`
+    /// leaves the Trash out.
+    @discardableResult
+    public func moveToTrash(ids: [UUID]) throws -> Date {
+        let time = Self.millis(now())
         try database.transaction {
-            // The entry goes from the index first: its row number may be taken by a new Note.
-            let indexed = try database.query(
-                "SELECT rowid, folded FROM notes WHERE id = ? AND folded IS NOT NULL", [.text(id.uuidString)]
-            ) { ($0.int(0), $0.text(1)) }
-            for (rowid, folded) in indexed { try removeFromIndex(rowid: rowid, folded: folded) }
-            try database.run("DELETE FROM notes WHERE id = ?", [.text(id.uuidString)])
+            for id in ids {
+                try database.run(
+                    "UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", [.int(time), .text(id.uuidString)]
+                )
+            }
         }
+        return Self.date(time)
+    }
+
+    /// Takes the Notes `ids` out of the Trash, back to their place in the Stack. `updatedAt` stays.
+    public func restore(ids: [UUID]) throws {
+        try database.transaction {
+            for id in ids {
+                try database.run("UPDATE notes SET deleted_at = NULL WHERE id = ?", [.text(id.uuidString)])
+            }
+        }
+    }
+
+    /// The Notes in the Trash, the most recently deleted first.
+    public func trash() throws -> [NoteSummary] {
+        try database.query(
+            "SELECT id, created_at, updated_at, deleted_at FROM notes WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, rowid DESC",
+            [], summary
+        )
+    }
+
+    public func trashCount() throws -> Int {
+        try database.queryInt("SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL")
+    }
+
+    /// Deletes for good every Note in the Trash, with its entry of the search index, in one transaction, and returns
+    /// how many there were.
+    @discardableResult
+    public func emptyTrash() throws -> Int {
+        var count = 0
+        try database.transaction {
+            let ids = try database.query("SELECT id FROM notes WHERE deleted_at IS NOT NULL") { $0.text(0) }
+            for id in ids { try removeForGood(idText: id) }
+            count = ids.count
+        }
+        return count
+    }
+
+    /// Deletes the Note for good, with its entry of the search index: for a Note that was left empty, and for the Trash
+    /// (Delete permanently). Moving a Note to the Trash is `moveToTrash`.
+    public func deletePermanently(id: UUID) throws {
+        try database.transaction { try removeForGood(idText: id.uuidString) }
+    }
+
+    private func removeForGood(idText: String) throws {
+        // The entry goes from the index first: its row number may be taken by a new Note.
+        let indexed = try database.query(
+            "SELECT rowid, folded FROM notes WHERE id = ? AND folded IS NOT NULL", [.text(idText)]
+        ) { ($0.int(0), $0.text(1)) }
+        for (rowid, folded) in indexed { try removeFromIndex(rowid: rowid, folded: folded) }
+        try database.run("DELETE FROM notes WHERE id = ?", [.text(idText)])
     }
 
     /// Deletes for good every Note of the Stack whose text is empty or only whitespace, and returns their ids.

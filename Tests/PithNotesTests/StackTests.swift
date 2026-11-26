@@ -3,7 +3,7 @@ import Testing
 @testable import PithNotes
 
 struct StackTests {
-    let a = UUID(), b = UUID(), c = UUID()
+    let a = UUID(), b = UUID(), c = UUID(), d = UUID()
 
     private func stack(_ ids: [UUID], at position: Stack.Position? = nil) -> Stack {
         Stack(ids: ids, position: position)
@@ -135,6 +135,58 @@ struct StackTests {
         s.remove(a)
         #expect(s.position == .blank)
         #expect(s.ids == [b])
+    }
+
+    // MARK: Trash
+
+    @Test func removingSeveralNotesMovesTheOpenOneToTheNextThatStays() {
+        var s = stack([a, b, c, d], at: .note(b))
+        s.remove([b, c])
+        #expect(s.ids == [a, d])
+        #expect(s.position == .note(d))
+    }
+
+    @Test func removingSeveralIncludingTheLastOpensThePreviousThatStays() {
+        var s = stack([a, b, c], at: .note(c))
+        s.remove([b, c])
+        #expect(s.ids == [a])
+        #expect(s.position == .note(a))
+    }
+
+    @Test func removingEverythingOpensTheBlank() {
+        var s = stack([a, b], at: .note(a))
+        s.remove([a, b])
+        #expect(s.ids.isEmpty)
+        #expect(s.position == .blank)
+    }
+
+    @Test func removingOtherNotesKeepsTheOpenOne() {
+        var s = stack([a, b, c], at: .note(c))
+        s.remove([a])
+        #expect(s.ids == [b, c])
+        #expect(s.position == .note(c))
+    }
+
+    @Test func removingTheLastOpenNoteOfSeveralGivesWayToTheNext() {
+        var s = stack([a, b, c], at: .note(a))
+        s.remove(b)
+        #expect(s.position == .note(a))
+        s.remove(a)
+        #expect(s.position == .note(c))
+    }
+
+    @Test func reloadingPutsARestoredNoteInItsPlaceAndKeepsThePosition() {
+        var s = stack([a, c], at: .note(c))
+        s.reload(ids: [a, b, c])
+        #expect(s.ids == [a, b, c])
+        #expect(s.position == .note(c))
+        var blank = stack([a, c], at: .blank)
+        blank.reload(ids: [a, b, c])
+        #expect(blank.position == .blank)
+        var first = stack([b, c], at: .note(b))
+        first.reload(ids: [a, b, c])
+        #expect(first.ids == [a, b, c])
+        #expect(first.position == .note(b))
     }
 
     // MARK: Latest
