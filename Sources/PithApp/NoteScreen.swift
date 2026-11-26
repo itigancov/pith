@@ -11,8 +11,9 @@ protocol StorageAlerts: AnyObject {
 
 /// The Note screen: the editor with the open Note, the store it lives in and the autosaver that writes it.
 ///
-/// It opens the latest Note of the Stack (or a Blank), restores the cursor and scroll position, saves the text
-/// after a pause and everything on `flush()`, and shows the size pill. The id of the open Note is not kept between launches.
+/// It opens the Note that was open when Pith last hid or quit (else the last of the Stack, or a Blank), pages through
+/// the Stack with the footer under the text, restores the cursor and scroll position, saves the text after a pause and
+/// everything on `flush()`, and shows the size pill. A Note left empty is deleted when the user leaves it, and at launch and quit.
 final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     static let placeholder = "Start typing, or paste with ⌘V"
     /// `editor.inset`: left, right and top; the bottom is `bottomInset`.
@@ -23,7 +24,12 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     let editor = EditorTextView()
     let scrollView = NSScrollView()
     let hud: SizeHUDView
+    let footer: StackFooterView
     let view: NSView
+    /// Where the user is in the Stack; read-only for the other screens, which move through `show(noteID:)`.
+    private(set) var stack = Stack(ids: [])
+    /// Which Note ⌘1 jumps to.
+    var latestMeans: () -> Latest
 
     var preferredFirstResponder: NSResponder? { editor }
     var usesTextCursor: Bool { true }
@@ -33,10 +39,17 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// Set once the Panel exists; it owns the screen.
     weak var alerts: StorageAlerts?
     private let textSize: TextSizeModel
+    /// Where the open Note is kept between launches; `nil` keeps nothing.
+    private let defaults: UserDefaults?
+    static let openNoteKey = "OpenNote"
+    static let latestMeansKey = "LatestMeans"
 
     private var autosaver: Autosaver?
     /// The notes, once they are open; `nil` while they are not.
     private(set) var store: NoteStore?
+    private var swipe = SwipeAccumulator()
+    /// The picture of the Note that was left, fading out over the new one.
+    private var snapshotView: NSImageView?
     /// The open Note; `nil` for a Blank.
     private var noteID: UUID?
     /// One history per slot, a Note or the Blank; it lives for the session only.
@@ -48,17 +61,24 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// - Parameter openStore: Opens the notes; called by `load()` and again by Try Again.
     init(
         openStore: @escaping () throws -> (store: NoteStore, recovery: CorruptionRecovery?),
-        scheduler: Scheduler, alerts: StorageAlerts? = nil, textSize: TextSizeModel
+        scheduler: Scheduler, alerts: StorageAlerts? = nil, textSize: TextSizeModel, defaults: UserDefaults? = nil
     ) {
         self.openStore = openStore
         self.scheduler = scheduler
         self.alerts = alerts
         self.textSize = textSize
+        self.defaults = defaults
+        latestMeans = {
+            defaults?.string(forKey: NoteScreen.latestMeansKey).flatMap(Latest.init(rawValue:)) ?? .newest
+        }
         hud = SizeHUDView(scheduler: scheduler)
+        footer = StackFooterView(scheduler: scheduler)
         let container = NoteScreenView()
         view = container
         super.init()
         container.onLayout = { [weak self] in self?.applyPendingScroll() }
+        container.onScroll = { [weak self] in self?.scrolled($0) ?? false }
+        container.onSwipe = { [weak self] in self?.swiped($0) }
         configureEditor()
         layOut(in: container)
         editor.theme = Theme(textSize: CGFloat(textSize.size))
@@ -102,6 +122,9 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
             self, selector: #selector(clipViewDidScroll), name: NSView.boundsDidChangeNotification, object: scrollView.contentView
         )
 
+        footer.frame = NSRect(x: 0, y: 0, width: container.bounds.width, height: StackFooterView.height)
+        container.addSubview(footer)
+
         hud.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(hud)
         NSLayoutConstraint.activate([
@@ -112,8 +135,10 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     // MARK: Opening
 
-    /// Opens the notes and shows the latest Note. A failure puts up the alert and locks the editor until Try Again works.
-    func load() {
+    /// Opens the notes and shows the Note that was open, deleting the empty ones first. A failure puts up the alert and
+    /// locks the editor until Try Again works.
+    /// - Parameter start: Where to open instead of the remembered Note.
+    func load(start: Stack.Position? = nil) {
         do {
             let (store, recovery) = try openStore()
             let autosaver = Autosaver(
@@ -121,14 +146,25 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
                 onNoteCreated: { [weak self] id in self?.noteWasCreated(id) },
                 onSaveFailure: { [weak self] error in self?.alerts?.presentSaveFailureAlert(reason: error.localizedDescription) }
             )
-            let latest = try store.stack().last
-            let note = try latest.flatMap { try store.note(id: $0.id) }
+            try store.deleteEmptyNotes()
+            var stack = Stack(ids: try store.stack().map(\.id))
+            switch start {
+            case .blank?: stack = Stack(ids: stack.ids, position: .blank)
+            case .note(let id)?: _ = stack.show(id)
+            case nil:
+                if let remembered = defaults?.string(forKey: Self.openNoteKey).flatMap(UUID.init(uuidString:)) { _ = stack.show(remembered) }
+            }
+            let note = try stack.position.noteID.flatMap { try store.note(id: $0) }
+            self.store = store
             self.autosaver = autosaver
             self.store = store
+            self.stack = stack
             show(note)
+            refreshFooter(activate: false)
             editor.isEditable = true
             if let recovery { alerts?.presentCorruptionRecoveryAlert(movedFile: recovery.movedFile) }
         } catch {
+            store = nil
             autosaver = nil
             store = nil
             editor.isEditable = false
@@ -154,14 +190,12 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         applyPendingScroll()
     }
 
-    /// Saves the open Note and opens the one with `id`. With a `query` the cursor goes to its first match, selected and
-    /// in view; without one the Note comes back with the cursor and scroll position it was left with.
+    /// Saves the open Note and opens the one with `id`, as a page turn. With a `query` the cursor goes to its first match,
+    /// selected and in view; without one the Note comes back with the cursor and scroll position it was left with.
     /// Does nothing when the Note is gone.
     func open(id: UUID, query: SearchQuery? = nil) {
-        flush()
-        guard let note = (try? store?.note(id: id)) ?? nil else { return }
-        show(note)
-        guard let query, let first = query.ranges(in: note.text).first else { return }
+        show(noteID: id)
+        guard stack.position == .note(id), let query, let first = query.ranges(in: editor.string).first else { return }
         editor.setSelectedRange(NSRange(location: first.lowerBound, length: first.count))
         pendingScroll = nil
         scrollSelectionToVisible()
@@ -182,6 +216,142 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         editor.setSelectedRange(NSRange(location: found.lowerBound, length: found.count))
         scrollSelectionToVisible()
         return true
+    }
+
+    // MARK: Paging
+
+    var isAvailable: Bool { store != nil && autosaver != nil }
+
+    func nextNote() { turn { $0.next() } }
+    func previousNote() { turn { $0.previous() } }
+    func newNote() { turn { $0.newNote() } }
+
+    /// Goes to the Latest Note, the newest or the last edited.
+    func goToLatest() {
+        turn { [self] stack in stack.latest(currentLatest(of: stack)) }
+    }
+
+    /// Goes to the Note `id`, as a page turn: the way back from Search and the Trash.
+    func show(noteID id: UUID) { turn { $0.show(id) } }
+
+    /// The one way from one Note to another. `operation` moves a copy of the Stack; the copy replaces the Stack when
+    /// the Note it came to is on screen.
+    private func turn(_ operation: (inout Stack) -> Stack.Move) {
+        guard let store, isAvailable else { return }
+        // Composition in progress would be cut by the new text.
+        editor.unmarkText()
+        // First: it can turn a Blank with text into a Note, which the Stack must know before it moves.
+        flush()
+        var candidate = stack
+        switch operation(&candidate) {
+        case .none:
+            return
+        case .edge:
+            refreshFooter(activate: true)
+        case .moved(let from, let to):
+            let incoming: Note?
+            switch to {
+            case .blank: incoming = nil
+            case .note(let id):
+                guard let note = try? store.note(id: id) else {
+                    refreshFooter(activate: true)
+                    return
+                }
+                incoming = note
+            }
+            installSnapshot()
+            if case .note(let old) = from, Self.isEmpty(editor.string) {
+                // The autosaver moves on first, so that it cannot write the Note that is about to go.
+                autosaver?.open(incoming?.id)
+                try? store.deletePermanently(id: old)
+                candidate.remove(old)
+                undoManagers[old] = nil
+            }
+            stack = candidate
+            show(incoming)
+            fadeSnapshot()
+            refreshFooter(activate: true)
+        }
+    }
+
+    /// A text of nothing but whitespace is an empty Note.
+    static func isEmpty(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Lights the footer for the Stack as it is; `pinned` keeps it lit, for screenshots.
+    func activateFooter(pinned: Bool = false) {
+        refreshFooter(activate: true, pinned: pinned)
+    }
+
+    private func refreshFooter(activate: Bool, pinned: Bool = false) {
+        let latest = isAvailable ? currentLatest(of: stack) : nil
+        let dots = StackDots.layout(ids: stack.ids, position: stack.position)
+        let counter = StackDots.counter(ids: stack.ids, position: stack.position, latest: latest)
+        let spoken = StackDots.spoken(ids: stack.ids, position: stack.position, latest: latest)
+        if activate {
+            footer.activate(dots: dots, counter: counter, spoken: spoken, pinned: pinned)
+        } else {
+            footer.update(dots: dots, counter: counter, spoken: spoken)
+        }
+    }
+
+    /// The Latest Note of `stack` by the setting; the last edited one is asked of the store.
+    private func currentLatest(of stack: Stack) -> UUID? {
+        if latestMeans() == .newest { return stack.ids.last }
+        return (try? store?.stack()).flatMap { Latest.lastEdited.id(in: $0) }
+    }
+
+    // MARK: Snapshot
+
+    private func installSnapshot() {
+        snapshotView?.removeFromSuperview()
+        snapshotView = nil
+        let bounds = scrollView.bounds
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, bounds.width > 0, bounds.height > 0,
+              let rep = scrollView.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        scrollView.cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        let picture = PassiveImageView(image: image)
+        picture.frame = scrollView.frame
+        picture.autoresizingMask = [.width, .height]
+        picture.imageScaling = .scaleAxesIndependently
+        view.addSubview(picture, positioned: .above, relativeTo: scrollView)
+        snapshotView = picture
+    }
+
+    /// `stack.fade`: the picture goes from opaque to clear over the new Note in 0.15 s.
+    private func fadeSnapshot() {
+        guard let picture = snapshotView else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            picture.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                picture.removeFromSuperview()
+                if self?.snapshotView === picture { self?.snapshotView = nil }
+            }
+        }
+    }
+
+    // MARK: Swipe
+
+    /// Two-finger scroll events that the text's scroll view hands up. `true` when the screen took the event.
+    private func scrolled(_ event: NSEvent) -> Bool {
+        guard NSEvent.isSwipeTrackingFromScrollEventsEnabled, isAvailable else { return false }
+        let fingers = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX : -event.scrollingDeltaX
+        guard let turn = swipe.feed(deltaX: fingers, deltaY: event.scrollingDeltaY, phase: event.phase, momentum: event.momentumPhase) else {
+            return false
+        }
+        if turn == .next { nextNote() } else { previousNote() }
+        return true
+    }
+
+    /// A three-finger swipe, when the system sends it: one turn.
+    private func swiped(_ event: NSEvent) {
+        if event.deltaX > 0 { previousNote() } else if event.deltaX < 0 { nextNote() }
     }
 
     // MARK: Scroll position
@@ -248,6 +418,8 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     private func noteWasCreated(_ id: UUID) {
         noteID = id
+        stack.noteCreated(id)
+        refreshFooter(activate: false)
         // The history of the Blank goes with its text.
         undoManagers[id] = blankUndoManager
         blankUndoManager = UndoManager()
@@ -296,6 +468,32 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     func willHide() {
         hud.dismiss()
+        footer.reset()
+        rememberOpenNote()
+    }
+
+    /// The id of the open Note goes to the defaults, so that the next launch opens it; a Blank leaves none.
+    private func rememberOpenNote() {
+        guard let defaults else { return }
+        if let id = stack.position.noteID {
+            defaults.set(id.uuidString, forKey: Self.openNoteKey)
+        } else {
+            defaults.removeObject(forKey: Self.openNoteKey)
+        }
+    }
+
+    /// The app is quitting: writes what is dirty, deletes the Notes left empty and remembers the open Note, or the last
+    /// one if the open one went.
+    func willTerminate() {
+        flush()
+        guard let store else { return }
+        let deleted = Set((try? store.deleteEmptyNotes()) ?? [])
+        if let open = stack.position.noteID, deleted.contains(open) {
+            stack = Stack(ids: stack.ids.filter { !deleted.contains($0) })
+        } else {
+            for id in deleted { stack.remove(id) }
+        }
+        rememberOpenNote()
     }
 
     func willCover() {
@@ -304,6 +502,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     /// The margins around the text and the space below its last line move the Panel.
     func isDragZone(atWindowPoint point: NSPoint) -> Bool {
+        if footer.dragArea.contains(footer.convert(point, from: nil)) { return true }
         let inEditor = editor.convert(point, from: nil)
         guard editor.visibleRect.contains(inEditor) else { return true }
         let inset = editor.textContainerInset
@@ -330,9 +529,26 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 /// The root view of the Note screen; reports its layout so a restored scroll position can wait for a size.
 private final class NoteScreenView: NSView {
     var onLayout: () -> Void = {}
+    /// Takes a scroll event of the Stack's swipe; `false` passes it on.
+    var onScroll: (NSEvent) -> Bool = { _ in false }
+    var onSwipe: (NSEvent) -> Void = { _ in }
+
+    // The scroll view hands up the horizontal scrolling it has no use for, which a swipe between pages is.
+    override func wantsScrollEventsForSwipeTracking(on axis: NSEvent.GestureAxis) -> Bool { axis == .horizontal }
+
+    override func scrollWheel(with event: NSEvent) {
+        if !onScroll(event) { super.scrollWheel(with: event) }
+    }
+
+    override func swipe(with event: NSEvent) { onSwipe(event) }
 
     override func layout() {
         super.layout()
         onLayout()
     }
+}
+
+/// The picture of the Note that was left: it never takes a click.
+private final class PassiveImageView: NSImageView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

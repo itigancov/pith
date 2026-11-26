@@ -11,10 +11,16 @@ ifeq ($(CONFIG),Release)
 DESTINATION := -destination 'generic/platform=macOS'
 endif
 
-# `make shots`: SURFACE=context-menu|text-size|save-failure|recorder|search-all|search-results|search-empty for another surface,
-# FIXTURE=<path> for another text (`Fixtures/Empty.md` for the placeholder), OUT=<folder> for the PNGs.
+# `make shots`: SURFACE=context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|search-empty
+# for another surface, FIXTURE=<path> for another text (`Fixtures/Empty.md` for the placeholder), OUT=<folder> for the PNGs.
 SURFACE ?= window
-SHOTS_DEFAULT_FIXTURE := $(if $(filter text-size,$(SURFACE)),TextSize.md,$(if $(filter search-%,$(SURFACE)),Search.json,Panel.md))
+SHOTS_FIXTURES_text-size := TextSize.md
+SHOTS_FIXTURES_stack := Stack.md
+SHOTS_FIXTURES_jump-latest := Standup.md
+SHOTS_FIXTURES_search-all := Search.json
+SHOTS_FIXTURES_search-results := Search.json
+SHOTS_FIXTURES_search-empty := Search.json
+SHOTS_DEFAULT_FIXTURE := $(or $(SHOTS_FIXTURES_$(SURFACE)),Panel.md)
 SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/$(SHOTS_DEFAULT_FIXTURE),$(FIXTURE))
 
 .PHONY: test bench build run shots

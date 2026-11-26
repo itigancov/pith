@@ -97,6 +97,36 @@ import Testing
         #expect(try store.stack().map(\.id) == [other.id])
     }
 
+    @Test func deleteEmptyNotesRemovesEmptyAndBlankTextNotesForGood() throws {
+        let empty = try store.insert(text: "", selection: noSelection, scrollOffset: 0)
+        let kept = try store.insert(text: "kept", selection: noSelection, scrollOffset: 0)
+        let spaces = try store.insert(text: " \n\t  \n", selection: noSelection, scrollOffset: 0)
+        #expect(Set(try store.deleteEmptyNotes()) == [empty.id, spaces.id])
+        #expect(try store.note(id: empty.id) == nil)
+        #expect(try store.note(id: spaces.id) == nil)
+        #expect(try store.stack().map(\.id) == [kept.id])
+        #expect(try store.deleteEmptyNotes().isEmpty)
+    }
+
+    @Test func deleteEmptyNotesLeavesTheTrashAlone() throws {
+        let trashed = try store.insert(text: "", selection: noSelection, scrollOffset: 0)
+        try store.execute("UPDATE notes SET deleted_at = 1000 WHERE id = '\(trashed.id.uuidString)'")
+        #expect(try store.deleteEmptyNotes().isEmpty)
+        #expect(try store.note(id: trashed.id) != nil)
+    }
+
+    @Test func deleteEmptyNotesClearsTheSearchIndex() throws {
+        let note = try store.insert(text: "findable", selection: noSelection, scrollOffset: 0)
+        #expect(try store.search("findable").map(\.id) == [note.id])
+        try store.updateText(id: note.id, text: "  ")
+        #expect(try store.deleteEmptyNotes() == [note.id])
+        #expect(try store.search("findable").isEmpty)
+        // The index entry went with the Note: a new Note may reuse its row number.
+        let other = try store.insert(text: "other", selection: noSelection, scrollOffset: 0)
+        #expect(try store.search("other").map(\.id) == [other.id])
+        #expect(try store.search("findable").isEmpty)
+    }
+
     @Test func freshDatabaseIsAtTheLatestSchemaVersion() throws {
         #expect(try store.queryInt("PRAGMA user_version") == NoteStore.schemaVersion)
         #expect(NoteStore.schemaVersion >= 1)

@@ -4,7 +4,8 @@ import PithNotes
 
 // Restyle timings of `Styler` over a plain `NSTextStorage` on the generated 5k-line Note (spec 09),
 // the storage timings of `NoteStore` on the same Note in a database file (spec 03),
-// and the search timings of `NoteStore` on a corpus of 2000 Notes plus that Note (spec 08a).
+// the search timings of `NoteStore` on a corpus of 2000 Notes plus that Note (spec 08a),
+// and the opening of that Note in the editor (spec 06).
 // Run in release: `make bench`. Exits with 1 when a budget is missed.
 // Budgets are checked on wall time; CPU time of the thread is printed beside it, since it barely moves
 // when other processes load the machine.
@@ -267,6 +268,49 @@ do {
         if round >= warmup { reindexes.append(sample) }
     }
     report("search after editing the Note", reindexes, median: 60)
+
+    // Launch and quit delete the empty Notes: a scan of the whole Stack.
+    report("delete empty Notes, none", (0..<(warmup + 11)).map { _ in timed { _ = try? store.deleteEmptyNotes() } }.dropFirst(warmup).map { $0 })
+}
+print()
+
+// Paging (spec 06): the editor of the Note screen, 540 × 440 off screen, shows the 5k-line Note in place of a short one.
+do {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 540, height: 440), styleMask: [.titled], backing: .buffered, defer: true)
+    let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 540, height: 440))
+    let editor = EditorTextView()
+    // As `NoteScreen` sets it up.
+    editor.autoresizingMask = [.width]
+    editor.isVerticallyResizable = true
+    editor.isHorizontallyResizable = false
+    editor.minSize = NSSize(width: 0, height: 0)
+    editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+    editor.textContainer?.widthTracksTextView = true
+    editor.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+    editor.textContainer?.lineFragmentPadding = 0
+    editor.textContainerInset = NSSize(width: 22, height: 22)
+    editor.drawsBackground = false
+    scrollView.hasVerticalScroller = true
+    scrollView.drawsBackground = false
+    scrollView.automaticallyAdjustsContentInsets = false
+    scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 18, right: 0)
+    scrollView.documentView = editor
+    window.contentView = scrollView
+
+    var opens: [Sample] = []
+    for round in 0..<(warmup + 11) {
+        // A short Note in between, so that every round changes the Note.
+        editor.string = "A short Note"
+        scrollView.layoutSubtreeIfNeeded()
+        let open = timed {
+            editor.string = note
+            scrollView.layoutSubtreeIfNeeded()
+            editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        }
+        if round >= warmup { opens.append(open) }
+    }
+    report("open the Note in the editor", opens, median: 150)
 }
 print()
 

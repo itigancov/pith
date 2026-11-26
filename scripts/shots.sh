@@ -1,8 +1,8 @@
 #!/bin/bash
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
-# Environment: SURFACE (window|context-menu|text-size|save-failure|recorder|search-all|search-results|search-empty),
-# FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
+# Environment: SURFACE (window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|
+# search-results|search-empty), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
@@ -25,9 +25,15 @@ if offset="$(LC_ALL=C grep -boF -m1 "$selected" "$fixture" | head -n1 | cut -d: 
     args=(-PithSelection "$offset ${#selected}")
 fi
 
-# The artboard of the size pill is at 17 pt.
+# What the artboard of the surface needs: the size pill is at 17 pt; the footer of the Stack is on note 12 of 40, on a Blank
+# after 7 notes, and on the Latest note, 10 of 10.
 size_args=()
-[[ "$surface" == "text-size" ]] && size_args=(-PithTextSize 17)
+case "$surface" in
+    text-size) size_args=(-PithTextSize 17) ;;
+    stack) size_args=(-PithStackSize 40 -PithStackIndex 12) ;;
+    stack-new) size_args=(-PithStackSize 7 -PithStackIndex blank) ;;
+    jump-latest) size_args=(-PithStackSize 10 -PithStackIndex 10) ;;
+esac
 
 # The times of Search's rows are counted from this moment: the first row of Search-All reads "10:42".
 now_args=()
