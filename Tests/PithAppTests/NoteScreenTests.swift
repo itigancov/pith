@@ -74,9 +74,10 @@ struct NoteScreenTests {
         _ = window
     }
 
-    @Test func aNoteLeftEmptyOpensEmptyWithThePlaceholder() throws {
-        try insert("")
+    @Test func aNoteLeftEmptyIsGoneAtLaunchAndTheBlankShowsThePlaceholder() throws {
+        let empty = try insert("")
         let (screen, window) = makeScreen()
+        #expect(try store.note(id: empty.id) == nil)
         #expect(screen.editor.string == "")
         #expect(screen.editor.isShowingPlaceholder)
         #expect(screen.editor.placeholder == "Start typing, or paste with ⌘V")
@@ -214,7 +215,7 @@ struct NoteScreenTests {
         _ = window
     }
 
-    @Test func emptyingANoteKeepsItAndItOpensEmptyNextTime() throws {
+    @Test func emptyingANoteKeepsItUntilTheNextLaunch() throws {
         let note = try insert("x")
         let (screen, window) = makeScreen()
         screen.editor.setSelectedRange(NSRange(location: 0, length: 1))
@@ -222,6 +223,7 @@ struct NoteScreenTests {
         screen.flush()
         #expect(try store.note(id: note.id)?.text == "")
         let (second, secondWindow) = makeScreen()
+        #expect(try store.note(id: note.id) == nil)
         #expect(second.editor.string == "")
         #expect(second.editor.isShowingPlaceholder)
         _ = (window, secondWindow)

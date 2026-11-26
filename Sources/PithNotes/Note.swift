@@ -33,6 +33,11 @@ nonisolated public struct Note: Sendable, Equatable {
         self.scrollOffset = scrollOffset
     }
 
+    /// Whether `text` makes an empty Note: nothing, or only spaces and line breaks. One that is left so stops being a Note.
+    public static func isEmpty(text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// The first non-empty line without its leading Block Marker, trimmed. Empty for an empty text.
     public var title: String {
         for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {

@@ -2,7 +2,7 @@ import AppKit
 import PithEditor
 import PithNotes
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var panelController: PanelController?
     private var noteScreen: NoteScreen?
     private var searchController: SearchController?
@@ -14,8 +14,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearanceArgument()
 
-        let screen = NoteScreen(openStore: makeStoreOpener(), scheduler: TaskScheduler(), textSize: textSize)
+        // A fixture lives in memory; the open Note of the real defaults is not its to change.
+        let screen = NoteScreen(
+            openStore: makeStoreOpener(), scheduler: TaskScheduler(), textSize: textSize,
+            defaults: UserDefaults.standard.string(forKey: "PithFixture") == nil ? .standard : nil
+        )
         self.noteScreen = screen
+        // `-PithLatest newest|last-edited` sets what ⌘1 jumps to, without storing it.
+        if let mode = UserDefaults.standard.string(forKey: "PithLatest").flatMap(Latest.init(rawValue:)) {
+            screen.latestMeans = { mode }
+        }
 
         let panel = PanelController(note: screen, fixedSize: windowSizeArgument())
         self.panelController = panel
@@ -25,10 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let now = nowArgument() { search.now = { now } }
         self.searchController = search
         panel.onWillHide = { [weak screen] in screen?.flush() }
+        panel.panel.onKeyEquivalent = { [weak self] event in self?.performPagingKey(event) ?? false }
         NSApp.mainMenu = makeMainMenu()
 
         // The alerts of the load wait in the Panel until it shows.
         screen.load()
+        openStackArgument(in: screen)
 
         hotkeys.onPress = { [weak panel] in panel?.toggle() }
         // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
@@ -55,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        noteScreen?.flush()
+        noteScreen?.willTerminate()
     }
 
     /// `-PithNow <ISO 8601>` is "now" for the times of Search's rows, so that a screenshot shows "10:42" and "Yesterday".
@@ -98,10 +108,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let numbers = defaults.string(forKey: "PithSelection")?.split(separator: " ").compactMap({ Int($0) }), numbers.count == 2 {
             selection = NoteSelection(location: numbers[0], length: numbers[1])
         }
+        // `-PithStackSize N` fills the Stack with N short Notes, the fixture one of them, at the place `-PithStackIndex` says.
+        let size = defaults.integer(forKey: "PithStackSize")
+        let slot = Self.stackSlot(size: size)
         return {
             let opened = try NoteStore.open(at: .memory)
-            if let text { _ = try opened.store.insert(text: text, selection: selection, scrollOffset: 0) }
+            guard size > 0 else {
+                if let text { _ = try opened.store.insert(text: text, selection: selection, scrollOffset: 0) }
+                return opened
+            }
+            for position in 1...size {
+                if position == slot, let text {
+                    _ = try opened.store.insert(text: text, selection: selection, scrollOffset: 0)
+                } else {
+                    _ = try opened.store.insert(text: "# Note \(position)\n\nA short Note to fill the Stack.", selection: NoteSelection(location: 0, length: 0), scrollOffset: 0)
+                }
+            }
             return opened
+        }
+    }
+
+    /// The place of the fixture in a Stack of `size`: `-PithStackIndex <i>` from 1, the last one for `blank` or none.
+    private static func stackSlot(size: Int) -> Int {
+        let index = UserDefaults.standard.string(forKey: "PithStackIndex").flatMap { Int($0) }
+        return min(max(index ?? size, 1), max(size, 1))
+    }
+
+    /// `-PithStackIndex <i>` opens the i-th Note of the Stack (from 1), `blank` opens a Blank; both with the footer lit.
+    private func openStackArgument(in screen: NoteScreen) {
+        guard let value = UserDefaults.standard.string(forKey: "PithStackIndex") else { return }
+        if value == "blank" {
+            screen.newNote()
+        } else if let index = Int(value), screen.stack.ids.indices.contains(index - 1) {
+            screen.show(noteID: screen.stack.ids[index - 1])
         }
     }
 
@@ -147,6 +186,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case searchAll = "search-all"
         case searchResults = "search-results"
         case searchEmpty = "search-empty"
+        /// The footer of the Stack lit, on a Note in the middle of the Stack, on a Blank, and on the Latest Note.
+        case stack
+        case stackNew = "stack-new"
+        case jumpLatest = "jump-latest"
 
         var opensPopup: Bool { self == .contextMenu }
         /// A sheet slides in, and Search comes up after the window does; the window is captured only after they have.
@@ -167,8 +210,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `-PithShow window|context-menu|text-size|save-failure|recorder|search-all|search-results|search-empty` opens that surface for `make shots`; `window` (the
-    /// default) opens nothing. `-PithShots YES` reports the IDs of the app's visible windows on stdout once the surface is up.
+    /// `-PithShow window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
+    /// search-empty` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
+    /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
         let surface = Surface.requested
@@ -221,6 +265,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .searchResults: self?.showSearch(query: "region")
             case .searchEmpty: self?.showSearch(query: "invoice")
             case .window, .recorder: break
+            case .stack, .stackNew, .jumpLatest:
+                screen.activateFooter(pinned: true)
             }
         }
     }
@@ -260,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func makeMainMenu() -> NSMenu {
+    func makeMainMenu() -> NSMenu {
         let main = NSMenu()
 
         let appMenu = submenu(in: main, title: "Pith")
@@ -330,6 +376,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(withTitle: "Smaller", action: #selector(decreaseTextSize(_:)), keyEquivalent: "-").target = self
         view.addItem(withTitle: "Actual Size", action: #selector(resetTextSize(_:)), keyEquivalent: "0").target = self
 
+        // The identifiers are the names of the shortcut actions, so that the settings can find these items.
+        let note = submenu(in: main, title: "Note")
+        let paging: [(String, Selector, String, NSEvent.ModifierFlags, String)] = [
+            ("New Note", #selector(newNote(_:)), "n", [.command], "newNote"),
+            ("Go to Latest Note", #selector(goToLatest(_:)), "1", [.command], "goToLatest"),
+            ("Previous Note", #selector(previousNote(_:)), "[", [.command, .shift], "previousNote"),
+            ("Next Note", #selector(nextNote(_:)), "]", [.command, .shift], "nextNote"),
+        ]
+        for (title, action, key, modifiers, identifier) in paging {
+            let item = note.addItem(withTitle: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            item.identifier = NSUserInterfaceItemIdentifier(identifier)
+            item.target = self
+        }
+
         let debug = submenu(in: main, title: "Debug")
         debug.addItem(withTitle: "Generate 5k Lines", action: #selector(generateBigNote(_:)), keyEquivalent: "")
 
@@ -339,6 +400,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reset.target = panelController
 
         return main
+    }
+
+    // MARK: Stack
+
+    @objc func newNote(_ sender: Any?) { noteScreen?.newNote() }
+    @objc func goToLatest(_ sender: Any?) { noteScreen?.goToLatest() }
+    @objc func previousNote(_ sender: Any?) { noteScreen?.previousNote() }
+    @objc func nextNote(_ sender: Any?) { noteScreen?.nextNote() }
+
+    /// ⇧⌘[ and ⇧⌘] by the key's place on the keyboard, whatever the layout. The menu would give them to Outdent and Indent,
+    /// which have ⌘[ and ⌘] and match with ⇧ held too.
+    static func pagingAction(for event: NSEvent) -> Selector? {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift] else { return nil }
+        switch event.keyCode {
+        case 33: return #selector(previousNote(_:))
+        case 30: return #selector(nextNote(_:))
+        default: return nil
+        }
+    }
+
+    private func performPagingKey(_ event: NSEvent) -> Bool {
+        guard let action = Self.pagingAction(for: event) else { return false }
+        let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
+        guard validateMenuItem(item) else { return true }
+        NSApp.sendAction(action, to: self, from: self)
+        return true
+    }
+
+    /// The paging items work with the Note screen on top and its notes open.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let paging: Set<Selector> = [#selector(newNote(_:)), #selector(goToLatest(_:)), #selector(previousNote(_:)), #selector(nextNote(_:))]
+        guard let action = menuItem.action, paging.contains(action) else { return true }
+        guard let noteScreen else { return false }
+        return panelController?.topScreen === noteScreen && noteScreen.isAvailable
     }
 
     // MARK: Text size
