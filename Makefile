@@ -11,10 +11,12 @@ ifeq ($(CONFIG),Release)
 DESTINATION := -destination 'generic/platform=macOS'
 endif
 
-# `make shots`: SURFACE=context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|search-empty|
+# `make shots`: SURFACE=context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|search-empty|
 # delete-undo|trash|trash-confirm|trash-delete
 # for another surface, FIXTURE=<path> for another text (`Fixtures/Empty.md` for the placeholder), OUT=<folder> for the PNGs.
 SURFACE ?= window
+SHOTS_FIXTURES_context-menu-spelling := ContextMenuSpelling.md
+SHOTS_FIXTURES_menu-bar := Trash.json
 SHOTS_FIXTURES_text-size := TextSize.md
 SHOTS_FIXTURES_stack := Stack.md
 SHOTS_FIXTURES_jump-latest := Standup.md
