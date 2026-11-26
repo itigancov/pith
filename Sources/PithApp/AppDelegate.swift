@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var panelController: PanelController?
     private var noteScreen: NoteScreen?
     private var searchController: SearchController?
+    private var trashController: TrashController?
     private let textSize = TextSizeModel(initial: AppDelegate.textSizeArgument())
     private let hotkeys = HotkeyCenter()
     private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
@@ -32,6 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         search.isBlocked = { [weak panel] in panel?.panel.attachedSheet != nil }
         if let now = nowArgument() { search.now = { now } }
         self.searchController = search
+        let trash = TrashController(stack: panel.screens, note: screen)
+        trash.isBlocked = { [weak panel] in panel?.panel.attachedSheet != nil }
+        trash.presentAlert = { [weak panel] alert, answer in panel?.enqueue(alert, handler: answer) }
+        trash.presentFailure = { [weak panel] reason in panel?.presentSaveFailureAlert(reason: reason) }
+        if let now = nowArgument() {
+            trash.now = { now }
+            screen.now = { now }
+        }
+        self.trashController = trash
         panel.onWillHide = { [weak screen] in screen?.flush() }
         panel.panel.onKeyEquivalent = { [weak self] event in self?.performPagingKey(event) ?? false }
         NSApp.mainMenu = makeMainMenu()
@@ -190,10 +200,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case stack
         case stackNew = "stack-new"
         case jumpLatest = "jump-latest"
+        /// The toast after ⌘⌫ on the open Note, held on screen.
+        case deleteUndo = "delete-undo"
+        /// The Trash, and over it the alert of Empty Trash and the alert of Delete permanently.
+        case trash
+        case trashConfirm = "trash-confirm"
+        case trashDelete = "trash-delete"
 
         var opensPopup: Bool { self == .contextMenu }
-        /// A sheet slides in, and Search comes up after the window does; the window is captured only after they have.
-        var opensSheet: Bool { self == .saveFailure || self == .searchAll || self == .searchResults || self == .searchEmpty }
+        /// A sheet slides in, and Search or the Trash comes up after the window does; the window is captured only after they have.
+        var opensSheet: Bool {
+            switch self {
+            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .deleteUndo, .trash, .trashConfirm, .trashDelete: true
+            default: false
+            }
+        }
 
         static var requested: Surface {
             UserDefaults.standard.string(forKey: "PithShow").flatMap(Surface.init(rawValue:)) ?? .window
@@ -211,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// `-PithShow window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
-    /// search-empty` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
+    /// search-empty|delete-undo|trash|trash-confirm|trash-delete` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
     /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
@@ -265,10 +286,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .searchResults: self?.showSearch(query: "region")
             case .searchEmpty: self?.showSearch(query: "invoice")
             case .window, .recorder: break
+            case .deleteUndo:
+                screen.moveToTrash()
+                // The mouse on the toast holds it, so the shot finds it there.
+                screen.toastHoverChanged(true)
+            case .trash: self?.showTrash()
+            case .trashConfirm: self?.showTrash()?.emptyTrash()
+            case .trashDelete: self?.showTrash()?.deleteSelectedPermanently()
             case .stack, .stackNew, .jumpLatest:
                 screen.activateFooter(pinned: true)
             }
         }
+    }
+
+    @discardableResult
+    private func showTrash() -> TrashScreen? {
+        trashController?.showTrash(nil)
+        return panelController?.topScreen as? TrashScreen
     }
 
     private func showSearch(query: String) {
@@ -389,6 +423,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item.keyEquivalentModifierMask = modifiers
             item.identifier = NSUserInterfaceItemIdentifier(identifier)
             item.target = self
+        }
+        note.addItem(.separator())
+        // ⌘⌫ is the Panel's own key too: with the Trash on top the list takes it first, and the item is off.
+        let trashItems: [(String, Selector, String, String)] = [
+            ("Move to Trash", #selector(TrashController.moveToTrash(_:)), "\u{8}", "moveToTrash"),
+            ("Show Trash", #selector(TrashController.showTrash(_:)), "", "showTrash"),
+        ]
+        for (title, action, key, identifier) in trashItems {
+            let item = note.addItem(withTitle: title, action: action, keyEquivalent: key)
+            if !key.isEmpty { item.keyEquivalentModifierMask = [.command] }
+            item.identifier = NSUserInterfaceItemIdentifier(identifier)
+            item.target = trashController
         }
 
         let debug = submenu(in: main, title: "Debug")

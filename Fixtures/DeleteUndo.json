@@ -1,0 +1,10 @@
+[
+  {
+    "text": "Wi-Fi at the coworking\nnetwork: second floor, the one without “guest”",
+    "updatedAt": "2026-11-25T14:05:00"
+  },
+  {
+    "text": "# Release notes draft\nPasted from the team thread, tidied before posting.\n\n- [x] Bump version to **1.0.2**\n- [ ] Mention the ==faster paging== fix\n- [ ] Credit the *beta testers*\n  - link the `CHANGELOG.md` section\n\n> Short sentences. One idea per line.\n\n```text\nPith 1.0.2: faster paging, fewer surprises.\n```\nSpec: [project doc](https://pith.app/doc)\n",
+    "updatedAt": "2026-11-26T10:42:00"
+  }
+]

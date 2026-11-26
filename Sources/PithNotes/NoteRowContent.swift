@@ -107,6 +107,16 @@ nonisolated public enum RowTimeLabel {
         return format(date, locale: locale, calendar: calendar) { $0.setLocalizedDateFormatFromTemplate(template) }
     }
 
+    /// The time of a row of the Trash: "Deleted today, 10:42", "Deleted yesterday", "Deleted Nov 14", "Deleted Nov 14, 2025".
+    public static func deleted(for date: Date, now: Date, locale: Locale, calendar: Calendar) -> String {
+        let label = string(for: date, now: now, locale: locale, calendar: calendar)
+        if calendar.isDate(date, inSameDayAs: now) { return "Deleted today, \(label)" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "Deleted \(label.lowercased(with: locale))"
+        }
+        return "Deleted \(label)"
+    }
+
     private static func format(_ date: Date, locale: Locale, calendar: Calendar, configure: (DateFormatter) -> Void) -> String {
         let formatter = DateFormatter()
         formatter.locale = locale

@@ -1,0 +1,21 @@
+[
+  {
+    "text": "Grocery run\nOat milk\nSourdough from the bakery\nLemons, three",
+    "updatedAt": "2026-11-12T08:20:00",
+    "deletedAt": "2026-11-14T19:05:00"
+  },
+  {
+    "text": "Wi-Fi at the coworking\nnetwork: second floor, the one without “guest”",
+    "updatedAt": "2026-11-20T14:05:00",
+    "deletedAt": "2026-11-25T18:20:00"
+  },
+  {
+    "text": "Release notes draft\nPasted from the team thread, tidied before posting.",
+    "updatedAt": "2026-11-26T08:15:00",
+    "deletedAt": "2026-11-26T10:42:00"
+  },
+  {
+    "text": "SQL to rerun\norders since 2026-11-01\ngroup by region",
+    "updatedAt": "2026-11-26T09:15:00"
+  }
+]

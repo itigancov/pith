@@ -24,6 +24,18 @@ struct FixtureTests {
         }
     }
 
+    @Test func aNoteWithADeletionTimeIsInTheTrash() throws {
+        let json = #"[{"text": "Kept", "updatedAt": "2026-11-12T09:00:00Z"}, {"text": "Gone", "updatedAt": "2026-11-13T09:00:00Z", "deletedAt": "2026-11-26T10:42:00Z"}]"#
+        let entries = try Fixture.parse(json: Data(json.utf8))
+        #expect(entries.map(\.deletedAt) == [nil, Date(timeIntervalSince1970: 1_795_689_720)])
+        let (store, _) = try Fixture.openStore(entries: entries)
+        #expect(try store.stack().count == 1)
+        let trash = try store.trash()
+        #expect(trash.count == 1)
+        #expect(trash[0].deletedAt == entries[1].deletedAt)
+        #expect(trash[0].updatedAt == entries[1].updatedAt)
+    }
+
     @Test func theStoreHoldsEveryNoteWithItsTime() throws {
         let early = Date(timeIntervalSince1970: 1_000_000)
         let late = Date(timeIntervalSince1970: 2_000_000)

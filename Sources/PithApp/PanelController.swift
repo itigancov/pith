@@ -242,7 +242,8 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts {
         enqueue(alert) { _ in }
     }
 
-    private func enqueue(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
+    /// Puts `alert` on the Panel as a sheet, after the ones waiting; `handler` gets the answer.
+    func enqueue(_ alert: NSAlert, handler: @escaping (NSApplication.ModalResponse) -> Void) {
         pendingAlerts.append((alert, handler))
         presentNextAlert()
     }

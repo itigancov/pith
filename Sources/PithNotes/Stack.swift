@@ -95,6 +95,29 @@ nonisolated public struct Stack: Sendable, Equatable {
         position = ids.indices.contains(removed) ? .note(ids[removed]) : ids.last.map { .note($0) } ?? .blank
     }
 
+    /// Several Notes left the Stack (they went to the Trash). The open one, if among them, gives way to the next that stays,
+    /// else the previous, else the Blank.
+    public mutating func remove(_ gone: [UUID]) {
+        let gone = Set(gone)
+        guard case .note(let open) = position, gone.contains(open), let at = ids.firstIndex(of: open) else {
+            ids.removeAll { gone.contains($0) }
+            return
+        }
+        let staying = ids.enumerated().filter { !gone.contains($0.element) }
+        if let next = staying.first(where: { $0.offset > at }) ?? staying.last {
+            position = .note(next.element)
+        } else {
+            position = .blank
+        }
+        ids = staying.map(\.element)
+    }
+
+    /// The Stack as the store has it now, after Notes came back from the Trash. The Note on screen stays open.
+    public mutating func reload(ids new: [UUID]) {
+        ids = new
+        if case .note(let id) = position, !new.contains(id) { position = new.last.map { .note($0) } ?? .blank }
+    }
+
     private mutating func move(to new: Position) -> Move {
         let old = position
         position = new

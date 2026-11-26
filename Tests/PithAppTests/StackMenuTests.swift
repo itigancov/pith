@@ -21,10 +21,19 @@ struct StackMenuTests {
         ))
     }
 
-    @Test func theNoteMenuHasTheFourItemsWithTheNamesOfTheShortcutActions() throws {
+    /// The four paging items, which the next tests look at.
+    private func pagingItems() throws -> [NSMenuItem] {
+        Array(try noteMenu().items.prefix(4))
+    }
+
+    @Test func theNoteMenuHasTheFourPagingItemsAndTheTrashOnesWithTheNamesOfTheShortcutActions() throws {
         let menu = try noteMenu()
-        #expect(menu.items.map(\.title) == ["New Note", "Go to Latest Note", "Previous Note", "Next Note"])
-        #expect(menu.items.map { $0.identifier?.rawValue } == ["newNote", "goToLatest", "previousNote", "nextNote"])
+        #expect(menu.items.map(\.title) == ["New Note", "Go to Latest Note", "Previous Note", "Next Note", "", "Move to Trash", "Show Trash"])
+        #expect(menu.items.map { $0.identifier?.rawValue } == ["newNote", "goToLatest", "previousNote", "nextNote", nil, "moveToTrash", "showTrash"])
+        let trash = menu.items[5]
+        #expect(trash.keyEquivalent == "\u{8}")
+        #expect(trash.keyEquivalentModifierMask == [.command])
+        #expect(menu.items[6].keyEquivalent == "")
         let titles = AppDelegate().makeMainMenu().items.map(\.title)
         #expect(titles.firstIndex(of: "Note") == titles.firstIndex(of: "View").map { $0 + 1 })
     }
@@ -34,8 +43,9 @@ struct StackMenuTests {
         NSApplication.shared.mainMenu = main
         let menu = try #require(main.items.first { $0.title == "Note" }?.submenu)
         menu.autoenablesItems = false
-        let recorders = menu.items.map { _ in Recorder() }
-        for (item, recorder) in zip(menu.items, recorders) {
+        let paging = Array(menu.items.prefix(4))
+        let recorders = paging.map { _ in Recorder() }
+        for (item, recorder) in zip(paging, recorders) {
             item.target = recorder
             item.action = #selector(Recorder.hit(_:))
             item.isEnabled = true
@@ -50,7 +60,7 @@ struct StackMenuTests {
     }
 
     @Test func theItemsShowTheShortcutsOfThePagingKeys() throws {
-        let items = try noteMenu().items
+        let items = try pagingItems()
         #expect(items.map(\.keyEquivalent) == ["n", "1", "[", "]"])
         #expect(items[2].keyEquivalentModifierMask == [.command, .shift])
         #expect(items[3].keyEquivalentModifierMask == [.command, .shift])
