@@ -269,6 +269,39 @@ struct NoteScreenTrashTests {
         _ = window
     }
 
+    @Test func aToastThatReplacesOneUnderTheMouseIsHeldToo() throws {
+        try insert("one")
+        try insert("two")
+        try insert("three")
+        let (screen, window) = makeScreen()
+        screen.moveToTrash()
+        screen.toastHoverChanged(true)
+        screen.moveToTrash()
+        scheduler.advance(by: 60)
+        #expect(screen.isToastShowing)
+        screen.toastHoverChanged(false)
+        scheduler.advance(by: 5.1)
+        #expect(!screen.isToastShowing)
+        _ = window
+    }
+
+    @Test func aToastAfterOneThatEndedUnderTheMouseIsNotHeld() throws {
+        try insert("one")
+        try insert("two")
+        try insert("three")
+        let (screen, window) = makeScreen()
+        screen.moveToTrash()
+        screen.toastHoverChanged(true)
+        screen.moveToTrash()
+        screen.toastHoverChanged(false)
+        scheduler.advance(by: 6)
+        #expect(!screen.isToastShowing)
+        screen.moveToTrash()
+        scheduler.advance(by: 6)
+        #expect(!screen.isToastShowing)
+        _ = window
+    }
+
     @Test func hidingThePanelOrCoveringTheNoteEndsTheToast() throws {
         try insert("one")
         try insert("two")

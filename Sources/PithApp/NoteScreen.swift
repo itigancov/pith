@@ -61,6 +61,8 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// The toast after ⌘⌫, while there is one.
     private var trashUndo = TrashUndo()
     private var toastTimer: Cancellable?
+    /// The mouse is on the toast.
+    private var isToastHovered = false
     /// A scroll position still to be applied: it needs a laid-out view.
     private var pendingScroll: CGFloat?
 
@@ -362,7 +364,9 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
             alerts?.presentSaveFailureAlert(reason: error.localizedDescription)
             return
         }
-        // A toast of the deletion before is replaced; the new one starts after the Notes have left.
+        // A toast of the deletion before is replaced; the new one starts after the Notes have left. The mouse that was on
+        // the old one is on the new one, though it sends nothing.
+        let held = isToastHovered && trashUndo.isShowing
         dismissToast()
         leave(moving)
         refreshFooter(activate: false)
@@ -371,6 +375,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         toast.show(text)
         footer.isHidden = true
         scheduleToastTimer()
+        if held { toastHoverChanged(true) }
         NSAccessibility.post(
             element: NSApp as Any, notification: .announcementRequested,
             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue]
@@ -424,6 +429,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// The mouse is on the toast or left it; the term of the toast stands while it is on.
     func toastHoverChanged(_ inside: Bool) {
         guard trashUndo.isShowing else { return }
+        isToastHovered = inside
         toastTimer?.cancel()
         toastTimer = nil
         if inside {
@@ -447,6 +453,8 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     }
 
     private func endToast() {
+        // A hidden toast gets no `mouseExited`; the next one starts free.
+        isToastHovered = false
         toastTimer?.cancel()
         toastTimer = nil
         toast.hide()
