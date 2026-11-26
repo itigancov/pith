@@ -196,6 +196,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case searchAll = "search-all"
         case searchResults = "search-results"
         case searchEmpty = "search-empty"
+        /// Search with an empty query and rows 2 to 4 selected, the 4th active.
+        case searchSelect = "search-select"
         /// The footer of the Stack lit, on a Note in the middle of the Stack, on a Blank, and on the Latest Note.
         case stack
         case stackNew = "stack-new"
@@ -211,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         /// A sheet slides in, and Search or the Trash comes up after the window does; the window is captured only after they have.
         var opensSheet: Bool {
             switch self {
-            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .deleteUndo, .trash, .trashConfirm, .trashDelete: true
+            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete: true
             default: false
             }
         }
@@ -232,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// `-PithShow window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
-    /// search-empty|delete-undo|trash|trash-confirm|trash-delete` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
+    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
     /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
@@ -285,6 +287,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .searchAll: self?.showSearch(query: "")
             case .searchResults: self?.showSearch(query: "region")
             case .searchEmpty: self?.showSearch(query: "invoice")
+            case .searchSelect:
+                self?.showSearch(query: "")
+                // As after ⇧↓ twice from the second row, once the list has its size: the pill scrolls to the active row.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    (self?.panelController?.topScreen as? SearchScreen)?.selectRows(from: 1, to: 3)
+                }
             case .window, .recorder: break
             case .deleteUndo:
                 screen.moveToTrash()
@@ -466,7 +474,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    /// ⌘A and ⌘⌫ with Search on top belong to its list, ahead of the field, which would select its text and erase the query.
+    /// ⌘⌫ is the menu's Move to Trash, and nothing at all with no row selected.
+    private func performSearchKey(_ event: NSEvent) -> Bool {
+        guard let search = panelController?.topScreen as? SearchScreen,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else { return false }
+        switch event.keyCode {
+        case 0:
+            search.selectAllRows()
+        case 51:
+            if search.canMoveToTrash { trashController?.moveToTrash(nil) }
+        default:
+            return false
+        }
+        return true
+    }
+
     private func performPagingKey(_ event: NSEvent) -> Bool {
+        if performSearchKey(event) { return true }
         guard let action = Self.pagingAction(for: event) else { return false }
         let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
         guard validateMenuItem(item) else { return true }

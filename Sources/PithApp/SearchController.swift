@@ -34,7 +34,10 @@ final class SearchController: NSObject, NSMenuItemValidation {
         guard stack.top === note, let store = note.store else { return }
         // The Note's last keystrokes are in the store before the first search.
         note.flush()
-        let screen = SearchScreen(store: store, now: now, locale: locale, calendar: calendar)
+        let screen = SearchScreen(store: store, toast: note.trashToast, now: now, locale: locale, calendar: calendar)
+        screen.moveToTrash = { [weak self] ids in self?.note.moveToTrash(ids: ids, showToast: false) ?? [] }
+        screen.onRestored = { [weak self] in self?.note.reloadStack(activateFooter: false) }
+        screen.onFailure = { [weak self] reason in self?.note.alerts?.presentSaveFailureAlert(reason: reason) }
         screen.onDismiss = { [weak self] raw in
             let query = SearchQuery(raw)
             if !query.isEmpty { self?.lastQuery = query }

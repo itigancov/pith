@@ -25,7 +25,12 @@ final class TrashController: NSObject, NSMenuItemValidation {
 
     /// ⌘⌫.
     @objc func moveToTrash(_ sender: Any?) {
-        guard !isBlocked(), stack.top === note else { return }
+        guard !isBlocked() else { return }
+        if let search = stack.top as? SearchScreen {
+            search.moveSelectionToTrash()
+            return
+        }
+        guard stack.top === note else { return }
         note.moveToTrash()
     }
 
@@ -52,7 +57,9 @@ final class TrashController: NSObject, NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if isBlocked() { return false }
         switch item.action {
-        case #selector(moveToTrash(_:)): return stack.top === note && note.isAvailable
+        case #selector(moveToTrash(_:)):
+            if let search = stack.top as? SearchScreen { return search.canMoveToTrash }
+            return stack.top === note && note.isAvailable
         case #selector(showTrash(_:)): return canShowTrash
         default: return true
         }

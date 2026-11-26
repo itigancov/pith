@@ -28,6 +28,9 @@ enum SearchStyle {
     /// `search.row.selected`
     static func selectedRow(dark: Bool) -> NSColor { Theme.ink.withAlphaComponent(dark ? 0.18 : 0.12) }
 
+    /// `search.row.active`: the moving end of a selection of several rows.
+    static func activeRow(dark: Bool) -> NSColor { Theme.ink.withAlphaComponent(dark ? 0.28 : 0.20) }
+
     /// The background of a hit in a snippet or a title.
     static func hit(dark: Bool) -> NSColor { Theme.ink.withAlphaComponent(dark ? 0.24 : 0.14) }
 
@@ -133,7 +136,7 @@ final class SearchRowCell: NSTableCellView {
         time.setContentHuggingPriority(.required, for: .horizontal)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            title.topAnchor.constraint(equalTo: topAnchor, constant: 11),
             time.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             time.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
             time.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 12),
@@ -162,24 +165,81 @@ final class SearchRowCell: NSTableCellView {
     }
 }
 
-/// A row with a rounded Ink fill when selected: the system's selection look is switched off here.
+/// A row with an Ink fill when selected: the system's selection look is switched off here. The row is one of a block of
+/// selected rows that touch: only the top of the first and the bottom of the last are rounded, and the fill reaches the
+/// row next to it. The row is `SearchScreen.rowPitch` tall, with one point of the 2 between rows above and one below.
 final class SearchRowView: NSTableRowView {
+    /// Where the selected row sits in its block, and whether it is the active one.
+    struct Pick: Equatable {
+        var joinsAbove = false
+        var joinsBelow = false
+        var isActive = false
+    }
+
+    /// `nil` for a row that is not selected.
+    var pick: Pick? {
+        didSet { if pick != oldValue { needsDisplay = true } }
+    }
+
+    private static let radius: CGFloat = 10
+
     override var isEmphasized: Bool {
         get { false }
         set {}
     }
 
     override func drawSelection(in dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10)
-        SearchStyle.selectedRow(dark: SearchStyle.isDark(self)).setFill()
-        path.fill()
-        SearchStyle.strokeBorder(NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 9.5, yRadius: 9.5), in: self)
+        guard let pick else { return }
+        let dark = SearchStyle.isDark(self)
+        // The plate lies one point in from the row's edges, except where it joins the next one.
+        let top = pick.joinsAbove ? bounds.minY : bounds.minY + 1
+        let bottom = pick.joinsBelow ? bounds.maxY : bounds.maxY - 1
+        let plate = NSRect(x: bounds.minX, y: top, width: bounds.width, height: bottom - top)
+        (pick.isActive ? SearchStyle.activeRow(dark: dark) : SearchStyle.selectedRow(dark: dark)).setFill()
+        Self.path(plate, roundTop: !pick.joinsAbove, roundBottom: !pick.joinsBelow, radius: Self.radius).fill()
+        // The border goes round the whole block: where the row joins the next one, the line that closes the shape lies
+        // outside this view and is cut off.
+        let reach: CGFloat = 4
+        let minY = pick.joinsAbove ? plate.minY - reach : plate.minY + 0.5
+        let maxY = pick.joinsBelow ? plate.maxY + reach : plate.maxY - 0.5
+        let edge = NSRect(x: plate.minX + 0.5, y: minY, width: plate.width - 1, height: maxY - minY)
+        SearchStyle.strokeBorder(
+            Self.path(edge, roundTop: !pick.joinsAbove, roundBottom: !pick.joinsBelow, radius: Self.radius - 0.5), in: self
+        )
+    }
+
+    /// A rectangle with the corners of its top (the smaller `y`: the view is flipped) and of its bottom rounded or square.
+    static func path(_ rect: NSRect, roundTop: Bool, roundBottom: Bool, radius: CGFloat) -> NSBezierPath {
+        let top = roundTop ? radius : 0
+        let bottom = roundBottom ? radius : 0
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: rect.minX + top, y: rect.minY))
+        path.line(to: NSPoint(x: rect.maxX - top, y: rect.minY))
+        if roundTop { path.appendArc(from: NSPoint(x: rect.maxX, y: rect.minY), to: NSPoint(x: rect.maxX, y: rect.minY + top), radius: radius) }
+        path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - bottom))
+        if roundBottom { path.appendArc(from: NSPoint(x: rect.maxX, y: rect.maxY), to: NSPoint(x: rect.maxX - bottom, y: rect.maxY), radius: radius) }
+        path.line(to: NSPoint(x: rect.minX + bottom, y: rect.maxY))
+        if roundBottom { path.appendArc(from: NSPoint(x: rect.minX, y: rect.maxY), to: NSPoint(x: rect.minX, y: rect.maxY - bottom), radius: radius) }
+        path.line(to: NSPoint(x: rect.minX, y: rect.minY + top))
+        if roundTop { path.appendArc(from: NSPoint(x: rect.minX, y: rect.minY), to: NSPoint(x: rect.minX + top, y: rect.minY), radius: radius) }
+        path.close()
+        return path
     }
 }
 
-/// The list: a click selects a row, but the focus stays in the search field.
+/// The list: the screen takes the clicks (it selects by its own rules) and the focus stays in the field.
 final class SearchTableView: NSTableView {
     override var acceptsFirstResponder: Bool { false }
+
+    /// A press on a row, with its modifiers and click count.
+    var onClick: (_ row: Int, _ modifiers: NSEvent.ModifierFlags, _ clickCount: Int) -> Void = { _, _, _ in }
+
+    // No `super`: the table would select, drag-select and take the focus by itself.
+    override func mouseDown(with event: NSEvent) {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        guard row >= 0 else { return }
+        onClick(row, event.modifierFlags.intersection(.deviceIndependentFlagsMask), event.clickCount)
+    }
 }
 
 /// The field with its container: the magnifier, the input and the hint on the right.
@@ -253,6 +313,13 @@ final class SearchFieldView: NSView {
 
 /// The input: its caret is Ink.
 final class SearchField: NSTextField {
+    /// The history of the field's text, for as long as the field is edited; while a toast is up, ⌘Z is the toast's.
+    var historyManager: UndoManager?
+
+    // The field editor asks its delegate, which is the field, for the undo manager.
+    @objc(undoManagerForTextView:)
+    func undoManager(for view: NSTextView) -> UndoManager? { historyManager }
+
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         (currentEditor() as? NSTextView)?.insertionPointColor = Theme.ink

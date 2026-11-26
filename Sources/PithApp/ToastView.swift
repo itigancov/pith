@@ -102,22 +102,10 @@ final class ToastView: NSView {
 
     /// `toast.background`, `toast.edge`, `toast.shadow` and `toast.contrastBorder`.
     private func updateAppearance() {
-        let dark = isDark
-        let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        layer?.backgroundColor = (dark
-            ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 64 / 255, alpha: 0.94)
-            : NSColor(srgbRed: 32 / 255, green: 32 / 255, blue: 34 / 255, alpha: 0.94)).cgColor
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = dark ? 0.35 : 0.18
-        if contrast {
-            layer?.borderWidth = 1 / (window?.backingScaleFactor ?? 2)
-            layer?.borderColor = NSColor(white: 1, alpha: 0.5).cgColor
-        } else if dark {
-            layer?.borderWidth = 0.5
-            layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
-        } else {
-            layer?.borderWidth = 0
-        }
+        PillStyle.apply(
+            to: layer, dark: isDark, contrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast,
+            scale: window?.backingScaleFactor ?? 2
+        )
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -208,5 +196,25 @@ final class ToastUndoButton: NSView {
         isPressed = false
         setHighlighted(false)
         if inside { onPress() }
+    }
+}
+
+/// The look of the dark pill over the content, the toast's and Search's selection pill: `toast.*` and `search.pill.*`.
+enum PillStyle {
+    static func apply(to layer: CALayer?, dark: Bool, contrast: Bool, scale: CGFloat) {
+        layer?.backgroundColor = (dark
+            ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 64 / 255, alpha: 0.94)
+            : NSColor(srgbRed: 32 / 255, green: 32 / 255, blue: 34 / 255, alpha: 0.94)).cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = dark ? 0.35 : 0.18
+        if contrast {
+            layer?.borderWidth = 1 / scale
+            layer?.borderColor = NSColor(white: 1, alpha: 0.5).cgColor
+        } else if dark {
+            layer?.borderWidth = 0.5
+            layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
+        } else {
+            layer?.borderWidth = 0
+        }
     }
 }

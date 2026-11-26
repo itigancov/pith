@@ -14,7 +14,7 @@ protocol StorageAlerts: AnyObject {
 /// It opens the Note that was open when Pith last hid or quit (else the last of the Stack, or a Blank), pages through
 /// the Stack with the footer under the text, restores the cursor and scroll position, saves the text after a pause and
 /// everything on `flush()`, and shows the size pill. A Note left empty is deleted when the user leaves it, and at launch and quit.
-final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
+final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate, ToastHost {
     static let placeholder = "Start typing, or paste with ⌘V"
     /// `editor.inset`: left, right and top; the bottom is `bottomInset`.
     static let inset: CGFloat = 22
@@ -31,8 +31,13 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     private(set) var stack = Stack(ids: [])
     /// Which Note ⌘1 jumps to.
     var latestMeans: () -> Latest
+    /// The toast after ⌘⌫, shared with the screens above the Note.
+    let trashToast: TrashToast
     /// The time for the toast's term.
-    var now: () -> Date = Date.init
+    var now: () -> Date {
+        get { trashToast.now }
+        set { trashToast.now = newValue }
+    }
 
     var preferredFirstResponder: NSResponder? { editor }
     var usesTextCursor: Bool { true }
@@ -58,11 +63,6 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// One history per slot, a Note or the Blank; it lives for the session only.
     private var undoManagers: [UUID: UndoManager] = [:]
     private lazy var blankUndoManager = makeUndoManager()
-    /// The toast after ⌘⌫, while there is one.
-    private var trashUndo = TrashUndo()
-    private var toastTimer: Cancellable?
-    /// The mouse is on the toast.
-    private var isToastHovered = false
     /// A scroll position still to be applied: it needs a laid-out view.
     private var pendingScroll: CGFloat?
 
@@ -81,6 +81,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         }
         hud = SizeHUDView(scheduler: scheduler)
         footer = StackFooterView(scheduler: scheduler)
+        trashToast = TrashToast(scheduler: scheduler)
         let container = NoteScreenView()
         view = container
         super.init()
@@ -136,7 +137,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         // On the place of the dots of the footer, which are hidden while it is up.
         toast.translatesAutoresizingMaskIntoConstraints = false
         toast.onUndo = { [weak self] in self?.undoMoveToTrash() }
-        toast.onHover = { [weak self] inside in self?.toastHoverChanged(inside) }
+        toast.onHover = { [weak self] inside in self?.trashToast.hoverChanged(inside) }
         container.addSubview(toast)
         NSLayoutConstraint.activate([
             toast.centerXAnchor.constraint(equalTo: container.centerXAnchor),
@@ -352,34 +353,25 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     /// Puts the Notes `ids` in the Trash with one toast, "N notes moved to Trash", and one Undo for them all. When the
     /// open Note is among them, the Stack moves to the next one that stays. Ids that are not in the Stack are skipped.
-    func moveToTrash(ids: [UUID]) {
-        guard let store, isAvailable else { return }
+    /// - Parameter showToast: `false` when the caller shows the toast on its own screen.
+    /// - Returns: The Notes that went to the Trash; none when nothing was in the Stack or the write failed.
+    @discardableResult
+    func moveToTrash(ids: [UUID], showToast: Bool = true) -> [UUID] {
+        guard let store, isAvailable else { return [] }
         editor.unmarkText()
         flush()
         let moving = ids.filter { stack.ids.contains($0) }
-        guard !moving.isEmpty else { return }
+        guard !moving.isEmpty else { return [] }
         do {
             try store.moveToTrash(ids: moving)
         } catch {
             alerts?.presentSaveFailureAlert(reason: error.localizedDescription)
-            return
+            return []
         }
-        // A toast of the deletion before is replaced; the new one starts after the Notes have left. The mouse that was on
-        // the old one is on the new one, though it sends nothing.
-        let held = isToastHovered && trashUndo.isShowing
-        dismissToast()
         leave(moving)
         refreshFooter(activate: false)
-        trashUndo.deleted(ids: moving, now: now())
-        guard let text = trashUndo.text else { return }
-        toast.show(text)
-        footer.isHidden = true
-        scheduleToastTimer()
-        if held { toastHoverChanged(true) }
-        NSAccessibility.post(
-            element: NSApp as Any, notification: .announcementRequested,
-            userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue]
-        )
+        if showToast { trashToast.show(ids: moving, on: self) }
+        return moving
     }
 
     /// The Notes `gone` are not in the store's Stack any more: the Stack drops them, and if the open one is among them the
@@ -409,8 +401,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// `false` when there is no toast.
     @discardableResult
     func undoMoveToTrash() -> Bool {
-        let ids = trashUndo.undo(now: now())
-        endToast()
+        let ids = trashToast.undo()
         guard let store, isAvailable, let ids else { return false }
         do {
             try store.restore(ids: ids)
@@ -423,48 +414,23 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
         return true
     }
 
-    var isToastShowing: Bool { trashUndo.isShowing }
-    var toastText: String? { trashUndo.text }
+    var isToastShowing: Bool { trashToast.isShowing }
+    var toastText: String? { trashToast.text }
 
     /// The mouse is on the toast or left it; the term of the toast stands while it is on.
-    func toastHoverChanged(_ inside: Bool) {
-        guard trashUndo.isShowing else { return }
-        isToastHovered = inside
-        toastTimer?.cancel()
-        toastTimer = nil
-        if inside {
-            trashUndo.pause()
-        } else {
-            trashUndo.resume(now: now())
-            scheduleToastTimer()
-        }
-    }
+    func toastHoverChanged(_ inside: Bool) { trashToast.hoverChanged(inside) }
 
-    private func scheduleToastTimer() {
-        toastTimer?.cancel()
-        toastTimer = scheduler.schedule(after: TrashUndo.duration) { [weak self] in self?.dismissToast() }
-    }
+    private func dismissToast() { trashToast.dismiss() }
 
-    /// The toast is over: the term ended, the text changed, the user turned a page or the Panel is going away.
-    private func dismissToast() {
-        guard trashUndo.isShowing else { return }
-        trashUndo.dismiss()
-        endToast()
-    }
+    var toastView: ToastView { toast }
 
-    private func endToast() {
-        // A hidden toast gets no `mouseExited`; the next one starts free.
-        isToastHovered = false
-        toastTimer?.cancel()
-        toastTimer = nil
-        toast.hide()
-        footer.isHidden = false
-    }
+    /// The footer gives its place to the toast.
+    func toastDidChange() { footer.isHidden = trashToast.isShowing }
 
     /// The history of a slot: while the toast is up, Undo is the toast's.
     private func makeUndoManager() -> UndoManager {
-        let manager = NoteUndoManager()
-        manager.isToastUp = { [weak self] in self?.trashUndo.isShowing ?? false }
+        let manager = ToastUndoManager()
+        manager.isToastUp = { [weak self] in self?.trashToast.isShowing ?? false }
         manager.undoToast = { [weak self] in self?.undoMoveToTrash() ?? false }
         return manager
     }
@@ -691,7 +657,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
     /// The margins around the text and the space below its last line move the Panel.
     func isDragZone(atWindowPoint point: NSPoint) -> Bool {
         // The toast takes the press, though it lies on the drag area of the footer.
-        if trashUndo.isShowing, !toast.isHidden, toast.frame.contains(view.convert(point, from: nil)) { return false }
+        if trashToast.isShowing, !toast.isHidden, toast.frame.contains(view.convert(point, from: nil)) { return false }
         if footer.dragArea.contains(footer.convert(point, from: nil)) { return true }
         let inEditor = editor.convert(point, from: nil)
         guard editor.visibleRect.contains(inEditor) else { return true }
@@ -741,17 +707,4 @@ private final class NoteScreenView: NSView {
 /// The picture of the Note that was left: it never takes a click.
 private final class PassiveImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-/// The history of the text in a slot. While the toast of the Trash is up, ⌘Z and Edit → Undo are the toast's Undo.
-private final class NoteUndoManager: UndoManager {
-    var isToastUp: () -> Bool = { false }
-    var undoToast: () -> Bool = { false }
-
-    override var canUndo: Bool { isToastUp() || super.canUndo }
-
-    override func undo() {
-        if isToastUp(), undoToast() { return }
-        super.undo()
-    }
 }
