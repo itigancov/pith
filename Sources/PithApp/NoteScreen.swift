@@ -601,6 +601,67 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate, ToastHost {
         blankOrNoteUndoManager
     }
 
+    // MARK: Context menu
+
+    /// Builds the context menu of the editor: the Note's own commands, with the system's items left out.
+    var contextMenu: () -> NSMenu = { NSMenu() }
+    /// Looks for misspelled words under a right click; the system's by default.
+    lazy var spellChecker: SpellChecking = SystemSpellChecker(documentTag: editor.spellCheckerDocumentTag)
+
+    /// What a correction item replaces and with what.
+    private final class Correction: NSObject {
+        let range: NSRange
+        let text: String
+        init(range: NSRange, text: String) {
+            self.range = range
+            self.text = text
+        }
+    }
+
+    /// A right click outside the selection puts the caret under the mouse; inside it the selection stays. The system's menu
+    /// is dropped; for a misspelled word the corrections and Ignore Spelling come first.
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        let selection = editor.selectedRange()
+        if selection.length == 0 || !NSLocationInRange(charIndex, selection) {
+            editor.setSelectedRange(NSRange(location: charIndex, length: 0))
+        }
+        let result = contextMenu()
+        guard editor.isContinuousSpellCheckingEnabled,
+              let range = spellChecker.misspelledRange(at: charIndex, in: editor.string) else { return result }
+        let text = editor.string
+        var items: [NSMenuItem] = []
+        let guesses = spellChecker.guesses(for: range, in: text)
+        for guess in guesses {
+            let item = NSMenuItem(title: guess, action: #selector(applyCorrection(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = Correction(range: range, text: guess)
+            items.append(item)
+        }
+        if guesses.isEmpty {
+            // No action: the item is off.
+            items.append(NSMenuItem(title: "No Guesses Found", action: nil, keyEquivalent: ""))
+        }
+        let ignore = NSMenuItem(title: "Ignore Spelling", action: #selector(ignoreSpelling(_:)), keyEquivalent: "")
+        ignore.target = self
+        ignore.representedObject = Correction(range: range, text: (text as NSString).substring(with: range))
+        items.append(ignore)
+        items.append(.separator())
+        for (offset, item) in items.enumerated() { result.insertItem(item, at: offset) }
+        return result
+    }
+
+    /// One step of Undo: the word comes back.
+    @objc private func applyCorrection(_ sender: NSMenuItem) {
+        guard let correction = sender.representedObject as? Correction else { return }
+        editor.insertText(correction.text, replacementRange: correction.range)
+    }
+
+    @objc private func ignoreSpelling(_ sender: NSMenuItem) {
+        guard let word = sender.representedObject as? Correction else { return }
+        spellChecker.ignore(word: word.text)
+        editor.checkTextInDocument(nil)
+    }
+
     /// Scrolls to the cursor and drops the restored scroll position, for a start with a chosen selection.
     func scrollSelectionToVisible() {
         restoredScroll = nil

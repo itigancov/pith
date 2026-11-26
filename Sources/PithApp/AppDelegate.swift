@@ -2,11 +2,13 @@ import AppKit
 import PithEditor
 import PithNotes
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: PanelController?
     private var noteScreen: NoteScreen?
     private var searchController: SearchController?
     private var trashController: TrashController?
+    private var menus: AppMenus?
+    private var statusItem: NSStatusItem?
     private let textSize = TextSizeModel(initial: AppDelegate.textSizeArgument())
     private let hotkeys = HotkeyCenter()
     private lazy var shortcuts = ShortcutStore(registrar: hotkeys)
@@ -43,8 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         self.trashController = trash
         panel.onWillHide = { [weak screen] in screen?.flush() }
-        panel.panel.onKeyEquivalent = { [weak self] event in self?.performPagingKey(event) ?? false }
-        NSApp.mainMenu = makeMainMenu()
+        let menus = AppMenus(shortcuts: shortcuts, panel: panel, note: screen, search: search, trash: trash, textSize: textSize)
+        self.menus = menus
+        panel.panel.onKeyEquivalent = { [weak menus] event in menus?.performKeyEquivalent(event) ?? false }
+        NSApp.mainMenu = menus.makeMainMenu()
+        statusItem = menus.makeStatusItem()
 
         // The alerts of the load wait in the Panel until it shows.
         screen.load()
@@ -64,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         // `-PithBigNote YES` starts on the generated Note, as Debug → Generate 5k Lines does.
-        if UserDefaults.standard.bool(forKey: "PithBigNote") { generateBigNote(nil) }
+        if UserDefaults.standard.bool(forKey: "PithBigNote") { menus.generateBigNote(nil) }
 
         // `-PithSelection "<location> <length>"` starts with that selection in view, for screenshots of it.
         if UserDefaults.standard.string(forKey: "PithSelection") != nil { screen.scrollSelectionToVisible() }
@@ -186,6 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private enum Surface: String {
         case window
         case contextMenu = "context-menu"
+        /// The context menu on the misspelled word "tetsers": its corrections and Ignore Spelling on top.
+        case contextMenuSpelling = "context-menu-spelling"
+        /// The menu of the icon in the menu bar, open.
+        case menuBar = "menu-bar"
         /// The size pill, held on screen.
         case textSize = "text-size"
         /// The sheet of the alert about notes that could not be saved.
@@ -209,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case trashConfirm = "trash-confirm"
         case trashDelete = "trash-delete"
 
-        var opensPopup: Bool { self == .contextMenu }
+        var opensPopup: Bool { self == .contextMenu || self == .contextMenuSpelling || self == .menuBar }
         /// A sheet slides in, and Search or the Trash comes up after the window does; the window is captured only after they have.
         var opensSheet: Bool {
             switch self {
@@ -233,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// `-PithShow window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
+    /// `-PithShow window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
     /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
     /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
@@ -268,18 +277,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .contextMenu:
                 // On the selection if there is one: a right click elsewhere moves it. Otherwise the middle of the visible text.
                 var point = NSPoint(x: editor.visibleRect.midX, y: editor.visibleRect.midY)
-                if editor.selectedRange().length > 0 {
-                    let onScreen = editor.firstRect(forCharacterRange: editor.selectedRange(), actualRange: nil)
-                    let inWindow = window.convertFromScreen(NSRect(x: onScreen.midX, y: onScreen.midY, width: 0, height: 0)).origin
-                    point = editor.convert(inWindow, from: nil)
-                }
-                let event = NSEvent.mouseEvent(
-                    with: .rightMouseDown, location: editor.convert(point, to: nil), modifierFlags: [], timestamp: 0,
-                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
-                )
-                if let event, let menu = editor.menu(for: event) {
-                    menu.popUp(positioning: nil, at: point, in: editor)
-                }
+                if editor.selectedRange().length > 0 { point = Self.point(of: editor.selectedRange(), in: editor, window: window) }
+                Self.popUpContextMenu(of: editor, at: point, window: window)
+            case .contextMenuSpelling:
+                let word = (editor.string as NSString).range(of: "tetsers")
+                // A point inside the word: the middle of its first letters, not the end of the line.
+                let point = Self.point(of: NSRange(location: word.location, length: 1), in: editor, window: window)
+                Self.popUpContextMenu(of: editor, at: point, window: window)
+            case .menuBar:
+                // Under the Panel's top edge, where the icon's menu would hang from the menu bar.
+                self?.menus?.makeStatusMenu().popUp(positioning: nil, at: NSPoint(x: window.frame.minX + 24, y: window.frame.maxY - 24), in: nil)
             case .textSize:
                 screen.showSizeHUD(size: self?.textSize.size ?? TextSizeModel.defaultSize, autoHide: false)
             case .saveFailure:
@@ -304,6 +311,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .stack, .stackNew, .jumpLatest:
                 screen.activateFooter(pinned: true)
             }
+        }
+    }
+
+    /// The middle of `range` in the editor's coordinates.
+    private static func point(of range: NSRange, in editor: NSTextView, window: NSWindow) -> NSPoint {
+        let onScreen = editor.firstRect(forCharacterRange: range, actualRange: nil)
+        let inWindow = window.convertFromScreen(NSRect(x: onScreen.midX, y: onScreen.midY, width: 0, height: 0)).origin
+        return editor.convert(inWindow, from: nil)
+    }
+
+    private static func popUpContextMenu(of editor: NSTextView, at point: NSPoint, window: NSWindow) {
+        let event = NSEvent.mouseEvent(
+            with: .rightMouseDown, location: editor.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        )
+        if let event, let menu = editor.menu(for: event) {
+            menu.popUp(positioning: nil, at: point, in: editor)
         }
     }
 
@@ -346,191 +370,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         default: break
         }
-    }
-
-    func makeMainMenu() -> NSMenu {
-        let main = NSMenu()
-
-        let appMenu = submenu(in: main, title: "Pith")
-        appMenu.addItem(withTitle: "About Pith", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Pith", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-
-        let edit = submenu(in: main, title: "Edit")
-        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
-        redo.keyEquivalentModifierMask = [.command, .shift]
-        edit.addItem(.separator())
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        edit.addItem(.separator())
-        // Ticket 10 may rearrange these.
-        let findItem = edit.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
-        let findMenu = NSMenu(title: "Find")
-        findItem.submenu = findMenu
-        let finds: [(String, Selector, String, NSEvent.ModifierFlags)] = [
-            ("Find…", #selector(SearchController.find(_:)), "f", [.command]),
-            ("Find Next", #selector(SearchController.findNext(_:)), "g", [.command]),
-            ("Find Previous", #selector(SearchController.findPrevious(_:)), "g", [.command, .shift]),
-        ]
-        for (title, action, key, modifiers) in finds {
-            let item = findMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
-            item.keyEquivalentModifierMask = modifiers
-            item.target = searchController
-        }
-
-        let format = submenu(in: main, title: "Format")
-        let inline: [(String, Selector, String, NSEvent.ModifierFlags)] = [
-            ("Bold", #selector(EditorTextView.toggleBold(_:)), "b", []),
-            ("Italic", #selector(EditorTextView.toggleItalic(_:)), "i", []),
-            ("Highlight", #selector(EditorTextView.toggleHighlight(_:)), "u", [.shift]),
-            ("Strikethrough", #selector(EditorTextView.toggleStrikethrough(_:)), "u", [.option]),
-            ("Code", #selector(EditorTextView.toggleCode(_:)), "j", [.shift]),
-            ("Link", #selector(EditorTextView.toggleLink(_:)), "k", [.shift]),
-        ]
-        let blocks: [(String, Selector, String, NSEvent.ModifierFlags)] = [
-            ("Heading 1", #selector(EditorTextView.toggleHeading1(_:)), "1", [.control]),
-            ("Heading 2", #selector(EditorTextView.toggleHeading2(_:)), "2", [.control]),
-            ("Heading 3", #selector(EditorTextView.toggleHeading3(_:)), "3", [.control]),
-            ("Bulleted List", #selector(EditorTextView.toggleBulletList(_:)), "l", [.shift]),
-            ("Numbered List", #selector(EditorTextView.toggleOrderedList(_:)), "l", [.option]),
-            ("Task List", #selector(EditorTextView.toggleTaskList(_:)), "l", [.control]),
-            ("Quote", #selector(EditorTextView.toggleQuote(_:)), "'", []),
-            ("Code Block", #selector(EditorTextView.toggleCodeBlock(_:)), "j", [.option, .shift]),
-        ]
-        for group in [inline, blocks] {
-            for (title, action, key, modifiers) in group {
-                let item = format.addItem(withTitle: title, action: action, keyEquivalent: key)
-                item.keyEquivalentModifierMask = modifiers.union(.command)
-            }
-            format.addItem(.separator())
-        }
-        format.addItem(withTitle: "Indent", action: #selector(NSResponder.indent(_:)), keyEquivalent: "]")
-        format.addItem(withTitle: "Outdent", action: #selector(EditorTextView.outdent(_:)), keyEquivalent: "[")
-        format.addItem(.separator())
-        format.addItem(withTitle: "Complete Task", action: #selector(EditorTextView.toggleTask(_:)), keyEquivalent: "k")
-
-        // ⌘= also works, see `PithPanel`.
-        let view = submenu(in: main, title: "View")
-        view.addItem(withTitle: "Bigger", action: #selector(increaseTextSize(_:)), keyEquivalent: "+").target = self
-        view.addItem(withTitle: "Smaller", action: #selector(decreaseTextSize(_:)), keyEquivalent: "-").target = self
-        view.addItem(withTitle: "Actual Size", action: #selector(resetTextSize(_:)), keyEquivalent: "0").target = self
-
-        // The identifiers are the names of the shortcut actions, so that the settings can find these items.
-        let note = submenu(in: main, title: "Note")
-        let paging: [(String, Selector, String, NSEvent.ModifierFlags, String)] = [
-            ("New Note", #selector(newNote(_:)), "n", [.command], "newNote"),
-            ("Go to Latest Note", #selector(goToLatest(_:)), "1", [.command], "goToLatest"),
-            ("Previous Note", #selector(previousNote(_:)), "[", [.command, .shift], "previousNote"),
-            ("Next Note", #selector(nextNote(_:)), "]", [.command, .shift], "nextNote"),
-        ]
-        for (title, action, key, modifiers, identifier) in paging {
-            let item = note.addItem(withTitle: title, action: action, keyEquivalent: key)
-            item.keyEquivalentModifierMask = modifiers
-            item.identifier = NSUserInterfaceItemIdentifier(identifier)
-            item.target = self
-        }
-        note.addItem(.separator())
-        // ⌘⌫ is the Panel's own key too: with the Trash on top the list takes it first, and the item is off.
-        let trashItems: [(String, Selector, String, String)] = [
-            ("Move to Trash", #selector(TrashController.moveToTrash(_:)), "\u{8}", "moveToTrash"),
-            ("Show Trash", #selector(TrashController.showTrash(_:)), "", "showTrash"),
-        ]
-        for (title, action, key, identifier) in trashItems {
-            let item = note.addItem(withTitle: title, action: action, keyEquivalent: key)
-            if !key.isEmpty { item.keyEquivalentModifierMask = [.command] }
-            item.identifier = NSUserInterfaceItemIdentifier(identifier)
-            item.target = trashController
-        }
-
-        let debug = submenu(in: main, title: "Debug")
-        debug.addItem(withTitle: "Generate 5k Lines", action: #selector(generateBigNote(_:)), keyEquivalent: "")
-
-        let windowMenu = submenu(in: main, title: "Window")
-        // The Panel has no Minimize or Close; ticket 10 builds the full menu.
-        let reset = windowMenu.addItem(withTitle: "Reset Panel Size", action: #selector(PanelController.resetPanelFrame(_:)), keyEquivalent: "")
-        reset.target = panelController
-
-        return main
-    }
-
-    // MARK: Stack
-
-    @objc func newNote(_ sender: Any?) { noteScreen?.newNote() }
-    @objc func goToLatest(_ sender: Any?) { noteScreen?.goToLatest() }
-    @objc func previousNote(_ sender: Any?) { noteScreen?.previousNote() }
-    @objc func nextNote(_ sender: Any?) { noteScreen?.nextNote() }
-
-    /// ⇧⌘[ and ⇧⌘] by the key's place on the keyboard, whatever the layout. The menu would give them to Outdent and Indent,
-    /// which have ⌘[ and ⌘] and match with ⇧ held too.
-    static func pagingAction(for event: NSEvent) -> Selector? {
-        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift] else { return nil }
-        switch event.keyCode {
-        case 33: return #selector(previousNote(_:))
-        case 30: return #selector(nextNote(_:))
-        default: return nil
-        }
-    }
-
-    /// ⌘A and ⌘⌫ with Search on top belong to its list, ahead of the field, which would select its text and erase the query.
-    /// ⌘⌫ is the menu's Move to Trash, and nothing at all with no row selected.
-    private func performSearchKey(_ event: NSEvent) -> Bool {
-        guard let search = panelController?.topScreen as? SearchScreen,
-              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else { return false }
-        // By the key's place on the keyboard, as the paging keys are.
-        let aKey: UInt16 = 0
-        let deleteKey: UInt16 = 51
-        switch event.keyCode {
-        case aKey:
-            search.selectAllRows()
-        case deleteKey:
-            if search.canMoveToTrash { trashController?.moveToTrash(nil) }
-        default:
-            return false
-        }
-        return true
-    }
-
-    private func performPagingKey(_ event: NSEvent) -> Bool {
-        if performSearchKey(event) { return true }
-        guard let action = Self.pagingAction(for: event) else { return false }
-        let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
-        guard validateMenuItem(item) else { return true }
-        NSApp.sendAction(action, to: self, from: self)
-        return true
-    }
-
-    /// The paging items work with the Note screen on top and its notes open.
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        let paging: Set<Selector> = [#selector(newNote(_:)), #selector(goToLatest(_:)), #selector(previousNote(_:)), #selector(nextNote(_:))]
-        guard let action = menuItem.action, paging.contains(action) else { return true }
-        guard let noteScreen else { return false }
-        return panelController?.topScreen === noteScreen && noteScreen.isAvailable
-    }
-
-    // MARK: Text size
-
-    @objc func increaseTextSize(_ sender: Any?) { changeTextSize { $0.bigger() } }
-    @objc func decreaseTextSize(_ sender: Any?) { changeTextSize { $0.smaller() } }
-    @objc func resetTextSize(_ sender: Any?) { changeTextSize { $0.reset() } }
-
-    /// Changes the size and shows the pill, also at the ends of the range where the size stays.
-    private func changeTextSize(_ change: (TextSizeModel) -> Void) {
-        change(textSize)
-        noteScreen?.showSizeHUD(size: textSize.size)
-    }
-
-    /// Replaces the Note with a generated one of 5000 lines, the same as the bench's, and forgets the undo history.
-    @objc private func generateBigNote(_ sender: Any?) {
-        noteScreen?.replaceText(NoteGenerator.note(lines: 5000, seed: 1))
-    }
-
-    private func submenu(in menu: NSMenu, title: String) -> NSMenu {
-        let item = menu.addItem(withTitle: title, action: nil, keyEquivalent: "")
-        let sub = NSMenu(title: title)
-        item.submenu = sub
-        return sub
     }
 }

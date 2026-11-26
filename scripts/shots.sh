@@ -1,7 +1,7 @@
 #!/bin/bash
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
-# Environment: SURFACE (window|context-menu|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|
+# Environment: SURFACE (window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|
 # search-results|search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
 set -euo pipefail
 
@@ -38,7 +38,7 @@ esac
 # The times of Search's rows are counted from this moment: the first row of Search-All reads "10:42".
 now_args=()
 case "$surface" in
-    search-* | delete-undo | trash | trash-*) now_args=(-PithNow 2026-11-26T11:00:00) ;;
+    search-* | delete-undo | trash | trash-* | menu-bar) now_args=(-PithNow 2026-11-26T11:00:00) ;;
 esac
 
 log="$(mktemp)"
@@ -84,7 +84,7 @@ for theme in light dark; do
         [[ "$role" == "done" || -z "$id" ]] && continue
         # `screencapture -l` of a popup menu returns the window with the menu open, the same as for the window itself,
         # so the context menu gets its PNG from its menu window; every other surface is in the window itself.
-        if [[ "$surface" == "context-menu" ]]; then
+        if [[ "$surface" == "context-menu" || "$surface" == "context-menu-spelling" || "$surface" == "menu-bar" ]]; then
             [[ "$role" == "menu" ]] || continue
             name="$surface-$theme.png"
         elif [[ "$surface" == "window" ]]; then

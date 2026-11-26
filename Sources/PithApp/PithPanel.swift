@@ -41,12 +41,8 @@ final class PithPanel: NSPanel {
     /// A key the app handles before the menu does; `true` when it did.
     var onKeyEquivalent: (NSEvent) -> Bool = { _ in false }
 
-    // ⌘= is ⌘+ without ⇧; the menu item has the shifted one only.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if onKeyEquivalent(event) { return true }
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, event.charactersIgnoringModifiers == "=" {
-            return NSApp.sendAction(#selector(AppDelegate.increaseTextSize(_:)), to: nil, from: self)
-        }
         return super.performKeyEquivalent(with: event)
     }
 
