@@ -1,0 +1,30 @@
+[
+  {
+    "text": "Sales call notes\nKickoff with the leads went well.\nPricing was settled last week, and the EMEA region wants the export by Friday",
+    "updatedAt": "2026-11-12T16:30:00"
+  },
+  {
+    "text": "Reply to the landlord\nHi! The boiler is making that noise again",
+    "updatedAt": "2026-11-14T12:10:00"
+  },
+  {
+    "text": "Regex for the log lines\n^\\[(\\d{4}-\\d{2}-\\d{2})\\] (ERROR|WARN)",
+    "updatedAt": "2026-11-16T18:45:00"
+  },
+  {
+    "text": "Grocery run\nOat milk\nSourdough from the bakery\nLemons, three",
+    "updatedAt": "2026-11-17T08:20:00"
+  },
+  {
+    "text": "Wi-Fi at the coworking\nnetwork: second floor, the one without “guest”",
+    "updatedAt": "2026-11-25T14:05:00"
+  },
+  {
+    "text": "SQL to rerun\norders since 2026-11-01\ngroup by region",
+    "updatedAt": "2026-11-26T09:15:00"
+  },
+  {
+    "text": "Release notes draft\nPasted from the team thread, tidied before posting.",
+    "updatedAt": "2026-11-26T10:42:00"
+  }
+]

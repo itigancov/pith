@@ -1,7 +1,8 @@
 #!/bin/bash
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
-# Environment: SURFACE (window|context-menu|text-size|save-failure|recorder), FIXTURE (text file), OUT (folder for the PNGs).
+# Environment: SURFACE (window|context-menu|text-size|save-failure|recorder|search-all|search-results|search-empty),
+# FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
@@ -27,6 +28,10 @@ fi
 # The artboard of the size pill is at 17 pt.
 size_args=()
 [[ "$surface" == "text-size" ]] && size_args=(-PithTextSize 17)
+
+# The times of Search's rows are counted from this moment: the first row of Search-All reads "10:42".
+now_args=()
+[[ "$surface" == search-* ]] && now_args=(-PithNow 2026-11-26T11:00:00)
 
 log="$(mktemp)"
 pid=""
@@ -54,7 +59,7 @@ for theme in light dark; do
     state_args=()
     [[ -n "$state" ]] && state_args=(-PithRecorderState "$state")
     "$app/Contents/MacOS/Pith" -PithFixture "$fixture" -PithAppearance "$theme" -PithWindowSize "$size" \
-        ${args[@]+"${args[@]}"} ${size_args[@]+"${size_args[@]}"} ${state_args[@]+"${state_args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
+        ${args[@]+"${args[@]}"} ${size_args[@]+"${size_args[@]}"} ${state_args[@]+"${state_args[@]}"} ${now_args[@]+"${now_args[@]}"} -PithShow "$surface" -PithShots YES >"$log" 2>/dev/null &
     pid=$!
 
     for _ in $(seq 100); do
