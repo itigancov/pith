@@ -2,7 +2,7 @@
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
 # Environment: SURFACE (window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|
-# search-results|search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
+# search-results|search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
@@ -33,6 +33,7 @@ case "$surface" in
     stack) size_args=(-PithStackSize 40 -PithStackIndex 12) ;;
     stack-new) size_args=(-PithStackSize 7 -PithStackIndex blank) ;;
     jump-latest) size_args=(-PithStackSize 10 -PithStackIndex 10) ;;
+    settings | settings-shortcuts) size_args=(-PithTextSize 14) ;;
 esac
 
 # The times of Search's rows are counted from this moment: the first row of Search-All reads "10:42".

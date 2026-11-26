@@ -127,8 +127,8 @@ final class TrashScreen: NSObject, PanelScreen, NSTableViewDataSource, NSTableVi
 
     // MARK: Rows
 
-    /// Reads the Trash. On a failure the list is empty and the log says why.
-    private func refresh() {
+    /// Reads the Trash, also after something outside the screen changed it. On a failure the list is empty and the log says why.
+    func refresh() {
         openedAt = now()
         do {
             rows = try store.trash()
@@ -254,13 +254,9 @@ final class TrashScreen: NSObject, PanelScreen, NSTableViewDataSource, NSTableVi
     func emptyTrash() {
         let count = rows.count
         guard count > 0 else { return }
-        let alert = NSAlert()
-        alert.messageText = "Empty Trash?"
-        alert.informativeText = "\(count == 1 ? "1 note will" : "\(count) notes will") be deleted for good. You can’t undo this."
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Empty Trash").hasDestructiveAction = true
+        let alert = TrashAlerts.makeEmptyAlert(count: count)
         presentAlert(alert) { [weak self] response in
-            guard response == .alertSecondButtonReturn, let self else { return }
+            guard TrashAlerts.confirms(response), let self else { return }
             do {
                 try self.store.emptyTrash()
             } catch {
