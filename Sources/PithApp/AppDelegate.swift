@@ -479,10 +479,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func performSearchKey(_ event: NSEvent) -> Bool {
         guard let search = panelController?.topScreen as? SearchScreen,
               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else { return false }
+        // By the key's place on the keyboard, as the paging keys are.
+        let aKey: UInt16 = 0
+        let deleteKey: UInt16 = 51
         switch event.keyCode {
-        case 0:
+        case aKey:
             search.selectAllRows()
-        case 51:
+        case deleteKey:
             if search.canMoveToTrash { trashController?.moveToTrash(nil) }
         default:
             return false
