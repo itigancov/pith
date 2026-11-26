@@ -130,6 +130,10 @@ struct MainMenuTests {
         let note = harness.submenu(harness.menus.makeMainMenu(), "Note")
         harness.choose(harness.item("Search Notes", in: note))
         #expect(harness.panel.screens.top is SearchScreen)
+        // Over Search it moves the selected rows, so it works while one is selected.
+        let search = try #require(harness.panel.screens.top as? SearchScreen)
+        #expect(harness.isEnabled(harness.item("Move to Trash", in: note)))
+        search.click(row: 0, modifiers: .command)
         #expect(!harness.isEnabled(harness.item("Move to Trash", in: note)))
         #expect(!harness.isEnabled(harness.item("New Note", in: note)))
         #expect(harness.isEnabled(harness.item("Show Trash", in: note)))

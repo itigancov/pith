@@ -255,6 +255,7 @@ final class AppMenus: NSObject, NSMenuItemValidation, NSMenuDelegate {
     /// A key the Panel handles before the main menu does; `true` when it did. ⌘= is ⌘+ without ⇧, and the menu item has
     /// the shifted one only.
     func performKeyEquivalent(_ event: NSEvent) -> Bool {
+        if performSearchKey(event) { return true }
         if let action = pagingAction(for: event) {
             let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
             if validateMenuItem(item) { perform(action, with: self) }
@@ -266,6 +267,25 @@ final class AppMenus: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return true
         }
         return false
+    }
+
+    /// ⌘A and ⌘⌫ with Search on top belong to its list, ahead of the field, which would select its text and erase the query.
+    /// ⌘⌫ is the menu's Move to Trash, and nothing at all with no row selected.
+    private func performSearchKey(_ event: NSEvent) -> Bool {
+        guard let screen = panel.screens.top as? SearchScreen,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else { return false }
+        // By the key's place on the keyboard, as the paging keys are.
+        let aKey: UInt16 = 0
+        let deleteKey: UInt16 = 51
+        switch event.keyCode {
+        case aKey:
+            screen.selectAllRows()
+        case deleteKey:
+            if screen.canMoveToTrash { trash.moveToTrash(nil) }
+        default:
+            return false
+        }
+        return true
     }
 
     // MARK: Validation
