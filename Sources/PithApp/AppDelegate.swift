@@ -87,11 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screen.load()
         openStackArgument(in: screen)
 
+        // Before the Hotkey: it must not open the Panel behind the alert.
+        offerMove(from: location)
+
         hotkeys.onPress = { [weak panel] in panel?.toggle() }
         // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
         shortcuts.registerHotkey()
-
-        offerMove(from: location)
 
         // Every launch shows the Panel, as the Hotkey does, except the one of a login; the recorder window takes its place for `-PithShow recorder`.
         if let tab = Surface.requested.settingsTab {
