@@ -45,12 +45,13 @@ final class OnboardingModel {
         hotkeyChips = shortcuts.chips(for: .hotkey)
         hotkeySpoken = shortcuts.spokenName(for: .hotkey)
         observer = NotificationCenter.default.addObserver(forName: .shortcutsDidChange, object: shortcuts, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.hotkeyChips = shortcuts.chips(for: .hotkey)
-                self.hotkeySpoken = shortcuts.spokenName(for: .hotkey)
-            }
+            MainActor.assumeIsolated { self?.refreshHotkey() }
         }
+    }
+
+    private func refreshHotkey() {
+        hotkeyChips = shortcuts.chips(for: .hotkey)
+        hotkeySpoken = shortcuts.spokenName(for: .hotkey)
     }
 
     isolated deinit {

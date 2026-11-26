@@ -56,6 +56,7 @@ private struct HotkeyStep: View {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 72, height: 72)
+                .shadow(color: .black.opacity(0.16), radius: 0.25, x: 0, y: 0)
                 .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 6)
                 .accessibilityHidden(true)
             OnboardingHeading(
