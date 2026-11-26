@@ -3,7 +3,7 @@ import Carbon.HIToolbox
 
 /// Colors and sizes of the recorder, from the design canvas (artboards Settings-Shortcuts and Onboarding-Hotkey).
 /// Dark values and the error ring are proposed and wait for the canvas to catch up.
-private enum RecorderTheme {
+enum RecorderTheme {
     static func color(light: NSColor, dark: NSColor, name: String) -> NSColor {
         NSColor(name: name) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
@@ -94,9 +94,13 @@ final class ShortcutRecorderView: NSView {
     var onRejection: (String?) -> Void = { _ in }
     /// Called when a recording starts and ends; the host pauses the Hotkey in between.
     var onRecordingChange: (Bool) -> Void = { _ in }
+    /// A bare Return on the large recorder: the window's default action (Continue in the onboarding). The recording it ended is over.
+    var onDefaultAction: () -> Void = {}
+    /// Starts recording by itself each time the view comes into a window: the onboarding's recorder is already listening.
+    var recordsWhenShown = false
 
     private let keyLayout: KeyLayout
-    private var model = ShortcutRecorderModel()
+    private var model: ShortcutRecorderModel
     private var keycaps: [KeycapView] = []
     private let placeholder = NSTextField(labelWithString: "Type shortcut…")
     private let ring = CALayer()
@@ -111,6 +115,7 @@ final class ShortcutRecorderView: NSView {
         self.variant = variant
         self.shortcut = shortcut
         self.keyLayout = layout
+        self.model = ShortcutRecorderModel(returnPerformsDefault: variant == .large)
         super.init(frame: .zero)
         wantsLayer = true
         // The ring is drawn outside the pill.
@@ -146,7 +151,7 @@ final class ShortcutRecorderView: NSView {
     /// Shows a state without any input, for screenshots; the host's caption follows through `onRejection`.
     func showState(_ state: ShortcutRecorderModel.State) {
         let wasRecording = model.isRecording
-        model = ShortcutRecorderModel(state: state)
+        model = ShortcutRecorderModel(state: state, returnPerformsDefault: variant == .large)
         refreshAppearance()
         onRejection(model.error)
         if wasRecording != model.isRecording { onRecordingChange(model.isRecording) }
@@ -163,8 +168,10 @@ final class ShortcutRecorderView: NSView {
         let oldError = model.error
         var committed = false
         var moveFocus: Bool?
+        var performsDefault = false
         switch model.handle(input) {
         case .none: break
+        case .performDefault: performsDefault = true
         case .commit(let candidate):
             let rejection = onCommit(candidate)
             model.resolve(rejection)
@@ -193,6 +200,7 @@ final class ShortcutRecorderView: NSView {
         if let reverse = moveFocus {
             if reverse { window?.selectPreviousKeyView(self) } else { window?.selectNextKeyView(self) }
         }
+        if performsDefault { onDefaultAction() }
     }
 
     // MARK: Events
@@ -228,7 +236,9 @@ final class ShortcutRecorderView: NSView {
 
     /// While recording, every key is the user's answer: ⌘N, ⌘Q and ⌘W reach the checks instead of the menu.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        model.isRecording && handle(event) ? true : super.performKeyEquivalent(with: event)
+        // The large recorder in focus owns a bare Return too, so a default button elsewhere in the window does not take it first.
+        let ownsReturn = variant == .large && window?.firstResponder === self
+        return (model.isRecording || ownsReturn) && handle(event) ? true : super.performKeyEquivalent(with: event)
     }
 
     override func flagsChanged(with event: NSEvent) {
@@ -240,7 +250,8 @@ final class ShortcutRecorderView: NSView {
         let code = Int(event.keyCode)
         guard model.isRecording else {
             guard modifiers.isEmpty, [kVK_Space, kVK_Return, kVK_ANSI_KeypadEnter].contains(code) else { return false }
-            apply(.begin)
+            // At rest Return begins a compact recorder and is the default action of a large one.
+            apply(code == kVK_Space ? .begin : .bareReturn)
             return true
         }
         if event.isARepeat { return true }
@@ -373,6 +384,13 @@ final class ShortcutRecorderView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil, model.isRecording { apply(.lostFocus) }
+        // After the window has finished putting the view in: it may pick its own first responder meanwhile.
+        if window != nil, recordsWhenShown {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, window != nil, !model.isRecording else { return }
+                beginRecording()
+            }
+        }
     }
 
     override func viewDidChangeEffectiveAppearance() {

@@ -30,6 +30,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     var hidePanel: () -> Void = {}
     /// Empty Trash emptied the Trash.
     var onTrashEmptied: () -> Void = {}
+    /// Whether another window of Pith (the onboarding) is open, so that closing Settings keeps the Dock icon.
+    var keepsRegularPolicy: () -> Bool = { false }
 
     init(context: SettingsContext, defaults: UserDefaults = .standard) {
         self.context = context
@@ -134,6 +136,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         context.loginItem.clearError()
-        NSApp.setActivationPolicy(.accessory)
+        if !keepsRegularPolicy() { NSApp.setActivationPolicy(.accessory) }
     }
 }
