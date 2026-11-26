@@ -13,7 +13,7 @@ enum PanelVisibility {
 
 /// Shows and hides the Panel, remembers its frame, keeps its screens and puts storage alerts on it as sheets.
 /// It knows only `PanelScreen`: the Note is the bottom screen, others go on top of it.
-final class PanelController: NSObject, NSWindowDelegate, StorageAlerts {
+final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHosting {
     let panel: PithPanel
     private let content: PanelContentView
     let screens: ScreenStack
@@ -75,6 +75,26 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts {
     private func focusTopScreen() {
         guard panel.attachedSheet == nil, panel.isKeyWindow else { return }
         if let responder = screens.top.preferredFirstResponder { panel.makeFirstResponder(responder) }
+    }
+
+    var isKey: Bool { panel.isKeyWindow }
+
+    /// An alert waits for the Panel to show, or is up on it.
+    var hasAlert: Bool { panel.attachedSheet != nil || !pendingAlerts.isEmpty }
+
+    /// Shows the Panel, or, if it is shown already, brings it forward where it is, with its waiting alert.
+    func reveal() {
+        guard isShown, panel.isVisible else {
+            show()
+            return
+        }
+        panel.makeKeyAndOrderFront(nil)
+        if let sheet = panel.attachedSheet {
+            sheet.makeKey()
+        } else {
+            focusTopScreen()
+        }
+        presentNextAlert()
     }
 
     func toggle() {

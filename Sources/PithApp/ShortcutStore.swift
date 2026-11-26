@@ -100,6 +100,13 @@ final class ShortcutStore {
         overrides[action] ?? action.defaultShortcut
     }
 
+    /// What a menu item of `action` gets as its key equivalent and mask; `nil` if the layout has no character for the key.
+    func menuKey(for action: ShortcutAction) -> (key: String, modifiers: NSEvent.ModifierFlags)? {
+        let shortcut = shortcut(for: action)
+        guard let key = shortcut.keyEquivalent(layout: layout) else { return nil }
+        return (key, shortcut.modifiers)
+    }
+
     /// The first rule `shortcut` breaks for `action`, or `nil` if it can be assigned.
     func rejection(of shortcut: Shortcut, for action: ShortcutAction) -> Rejection? {
         if let rejection = Self.staticRejection(of: shortcut, for: action) { return rejection }
