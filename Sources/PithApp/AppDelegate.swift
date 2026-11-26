@@ -15,6 +15,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recorderWindow: RecorderTestWindow?
     private var settings: SettingsWindowController?
     private var appearance: AppearanceModel?
+    private var loginItem: LoginItem?
+    /// The system started Pith as a login item: it comes up quietly, without the Panel.
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The event that started the app is there only while the launch runs.
+        launchedAsLoginItem = LaunchEvent.isLoginLaunch(NSAppleEventManager.shared().currentAppleEvent)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // `-PithAppearance light|dark` forces an appearance without storing it; without it the choice of Settings, else the system's.
@@ -22,6 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             initial: Appearance(argument: UserDefaults.standard.string(forKey: "PithAppearance")), apply: AppearanceModel.applyToApp
         )
         self.appearance = appearance
+
+        // Where Pith is decides whether it can be a login item; after a new signature the system's record can be stale.
+        let location = InstallLocation.current()
+        let loginItem = LoginItemShot.requested?.makeLoginItem() ?? {
+            let item = LoginItem(service: MainAppLoginItemService(), location: location)
+            item.restoreAtLaunch()
+            return item
+        }()
+        self.loginItem = loginItem
 
         // A fixture lives in memory; the open Note of the real defaults is not its to change.
         let screen = NoteScreen(
@@ -55,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.panel.onKeyEquivalent = { [weak menus] event in menus?.performKeyEquivalent(event) ?? false }
         let context = SettingsContext(
             shortcuts: shortcuts, textSize: textSize, appearance: appearance, latestMeans: latestMeans,
-            trash: SettingsTrash(store: { [weak screen] in screen?.store })
+            trash: SettingsTrash(store: { [weak screen] in screen?.store }), loginItem: loginItem
         )
         let settings = SettingsWindowController(context: context)
         settings.hidePanel = { [weak panel] in panel?.hide() }
@@ -74,14 +91,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
         shortcuts.registerHotkey()
 
-        // Every launch shows the Panel, as the Hotkey does; the recorder window takes its place for `-PithShow recorder`.
+        offerMove(from: location)
+
+        // Every launch shows the Panel, as the Hotkey does, except the one of a login; the recorder window takes its place for `-PithShow recorder`.
         if let tab = Surface.requested.settingsTab {
             settings.show(tab: tab, remembering: false)
         } else if Surface.requested == .recorder {
             let state = UserDefaults.standard.string(forKey: "PithRecorderState").flatMap(Self.recorderState)
             recorderWindow = RecorderTestWindow(store: shortcuts, size: windowSizeArgument(), state: state)
             recorderWindow?.show()
-        } else {
+        } else if !launchedAsLoginItem {
             panel.show()
         }
 
@@ -94,6 +113,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         presentAlertArguments()
 
         showSurface(in: panel.panel, screen: screen)
+    }
+
+    /// "Move Pith to Applications?" before the Panel shows. A launch for development (a fixture, a surface for a screenshot)
+    /// and a login launch do not ask.
+    private func offerMove(from location: InstallLocation) {
+        let defaults = UserDefaults.standard
+        guard !launchedAsLoginItem, defaults.string(forKey: "PithFixture") == nil, Surface.requested == .window,
+              MoveOffer.shouldAsk(location: location, suppressed: defaults.bool(forKey: MoveOffer.suppressedKey), isDebug: MoveOffer.isDebugBuild)
+        else { return }
+        MoveOffer(defaults: defaults).run(location: location)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -237,11 +266,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         /// The Settings window instead of the Panel, on General and on Shortcuts.
         case settings
         case settingsShortcuts = "settings-shortcuts"
+        /// Settings on General with the login item in the state `-PithLoginItemState` gives: needing approval, outside Applications.
+        case settingsLoginApproval = "settings-login-approval"
+        case settingsOutsideApplications = "settings-outside-applications"
+        /// The alert "Move Pith to Applications?", which moves nothing here.
+        case moveAlert = "move-alert"
 
         /// The tab of the Settings window when that is the surface.
         var settingsTab: SettingsTab? {
             switch self {
-            case .settings: .general
+            case .settings, .settingsLoginApproval, .settingsOutsideApplications: .general
             case .settingsShortcuts: .shortcuts
             default: nil
             }
@@ -251,7 +285,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         /// A sheet slides in, and Search or the Trash comes up after the window does; the window is captured only after they have.
         var opensSheet: Bool {
             switch self {
-            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete, .settings, .settingsShortcuts: true
+            case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete, .settings, .settingsShortcuts,
+                 .settingsLoginApproval, .settingsOutsideApplications, .moveAlert: true
             default: false
             }
         }
@@ -278,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `-PithShow window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|search-results|
-    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
+    /// search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert` opens that surface for `make shots`; `window` (the default) opens nothing. `-PithShots YES` reports the
     /// IDs of the app's visible windows on stdout once the surface is up.
     private func showSurface(in window: NSWindow, screen: NoteScreen) {
         let defaults = UserDefaults.standard
@@ -290,7 +325,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if defaults.bool(forKey: "PithShots") {
             // `popUp` blocks in its tracking loop, so the report is a timer that also fires there.
             let attempts = Counter()
-            let panelNumber = shotWindow.windowNumber
+            // The alert is the window to photograph there, not the Panel behind it.
+            let panelNumber = surface == .moveAlert ? -1 : shotWindow.windowNumber
             let opensPopup = surface.opensPopup
             let opensSheet = surface.opensSheet
             let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
@@ -335,7 +371,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     (self?.panelController?.topScreen as? SearchScreen)?.selectRows(from: 1, to: 3)
                 }
-            case .window, .recorder, .settings, .settingsShortcuts: break
+            case .window, .recorder, .settings, .settingsShortcuts, .settingsLoginApproval, .settingsOutsideApplications: break
+            case .moveAlert:
+                // Modal: the shots are reported from a timer. Whatever the button, nothing is moved.
+                NSApp.activate()
+                _ = MoveOffer.makeAlert().runModal()
             case .deleteUndo:
                 screen.moveToTrash()
                 // The mouse on the toast holds it, so the shot finds it there.
@@ -390,10 +430,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
         let pid = Int(ProcessInfo.processInfo.processIdentifier)
         let menuLayer = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let modalLayer = Int(CGWindowLevelForKey(.modalPanelWindow))
         return list.compactMap { info in
             guard info[kCGWindowOwnerPID as String] as? Int == pid,
                   let id = info[kCGWindowNumber as String] as? Int, let layer = info[kCGWindowLayer as String] as? Int else { return nil }
-            if id == panel { return ("window", id) }
+            // A modal alert is the window of its surface; it has no number to know beforehand.
+            if id == panel || layer == modalLayer { return ("window", id) }
             return layer >= menuLayer ? ("menu", id) : nil
         }
     }

@@ -128,9 +128,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) {
         context.trash.refresh()
+        // The user may have changed the login item in System Settings.
+        context.loginItem.refresh()
     }
 
     func windowWillClose(_ notification: Notification) {
+        context.loginItem.clearError()
         NSApp.setActivationPolicy(.accessory)
     }
 }
