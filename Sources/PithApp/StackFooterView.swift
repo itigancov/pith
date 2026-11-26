@@ -112,10 +112,7 @@ final class StackFooterView: NSView {
         isPinned = false
         isActive = false
         counter.alphaValue = 0
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        recolor()
-        CATransaction.commit()
+        recolorWithoutAnimation()
     }
 
     private func holdDidEnd() {
@@ -209,6 +206,13 @@ final class StackFooterView: NSView {
         )
     }
 
+    private func recolorWithoutAnimation() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        recolor()
+        CATransaction.commit()
+    }
+
     /// Ink and alpha of every dot for the state and the theme.
     private func recolor() {
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -230,17 +234,11 @@ final class StackFooterView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        recolor()
-        CATransaction.commit()
+        recolorWithoutAnimation()
     }
 
     @objc private func displayOptionsDidChange(_ notification: Notification) {
         counter.textColor = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? .labelColor : .secondaryLabelColor
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        recolor()
-        CATransaction.commit()
+        recolorWithoutAnimation()
     }
 }

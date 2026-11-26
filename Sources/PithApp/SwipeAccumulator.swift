@@ -11,25 +11,39 @@ struct SwipeAccumulator {
     /// `swipe.threshold`: travel in points.
     static let threshold: CGFloat = 50
 
+    private enum State {
+        case idle
+        /// The gesture began; the first event that moves decides whether it is a swipe.
+        case undecided
+        case armed
+    }
+
     private var travel: CGFloat = 0
-    private var isArmed = false
+    private var state = State.idle
 
     /// - Parameters:
     ///   - deltaX: Horizontal travel of the fingers of this event, positive to the right.
-    ///   - deltaY: Vertical travel; a gesture that starts more vertical than horizontal is a scroll, not a swipe.
+    ///   - deltaY: Vertical travel; a gesture whose first movement is more vertical than horizontal is a scroll, not a swipe.
     /// - Returns: The turn, once per gesture; fingers to the left turn to the next Note.
     mutating func feed(deltaX: CGFloat, deltaY: CGFloat, phase: NSEvent.Phase, momentum: NSEvent.Phase) -> Turn? {
         // The inertia after the fingers lift never turns a page.
         guard momentum.isEmpty else { return nil }
         if phase.contains(.began) {
             travel = 0
-            isArmed = abs(deltaX) > abs(deltaY)
+            state = .undecided
         }
-        guard isArmed, !phase.isEmpty else { return nil }
+        guard !phase.isEmpty else { return nil }
+        if state == .undecided, deltaX != 0 || deltaY != 0 {
+            state = abs(deltaX) > abs(deltaY) ? .armed : .idle
+        }
+        guard state == .armed else {
+            if phase.contains(.ended) || phase.contains(.cancelled) { state = .idle }
+            return nil
+        }
         travel += deltaX
-        if phase.contains(.ended) || phase.contains(.cancelled) { isArmed = false }
+        if phase.contains(.ended) || phase.contains(.cancelled) { state = .idle }
         guard abs(travel) >= Self.threshold else { return nil }
-        isArmed = false
+        state = .idle
         return travel < 0 ? .next : .previous
     }
 }

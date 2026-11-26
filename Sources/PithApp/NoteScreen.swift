@@ -260,23 +260,20 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
                 incoming = note
             }
             installSnapshot()
-            if case .note(let old) = from, Self.isEmpty(editor.string) {
+            if case .note(let old) = from, Note.isEmpty(text: editor.string) {
                 // The autosaver moves on first, so that it cannot write the Note that is about to go.
                 autosaver?.open(incoming?.id)
-                try? store.deletePermanently(id: old)
-                candidate.remove(old)
-                undoManagers[old] = nil
+                // If the delete fails the Note is still in the store, so it stays in the Stack too.
+                if (try? store.deletePermanently(id: old)) != nil {
+                    candidate.remove(old)
+                    undoManagers[old] = nil
+                }
             }
             stack = candidate
             show(incoming)
             fadeSnapshot()
             refreshFooter(activate: true)
         }
-    }
-
-    /// A text of nothing but whitespace is an empty Note.
-    static func isEmpty(_ text: String) -> Bool {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Lights the footer for the Stack as it is; `pinned` keeps it lit, for screenshots.
@@ -304,13 +301,24 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate {
 
     // MARK: Snapshot
 
+    /// Takes the picture of the Note on screen for the fade. A fade still running is part of what is on screen: the old
+    /// picture goes into the new one at its current opacity.
     private func installSnapshot() {
+        let fading = snapshotView.flatMap { picture in
+            picture.image.map { ($0, picture.layer?.presentation()?.opacity ?? Float(picture.alphaValue)) }
+        }
         snapshotView?.removeFromSuperview()
         snapshotView = nil
         let bounds = scrollView.bounds
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, bounds.width > 0, bounds.height > 0,
               let rep = scrollView.bitmapImageRepForCachingDisplay(in: bounds) else { return }
         scrollView.cacheDisplay(in: bounds, to: rep)
+        if let (old, opacity) = fading, opacity > 0, let context = NSGraphicsContext(bitmapImageRep: rep) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            old.draw(in: NSRect(origin: .zero, size: bounds.size), from: .zero, operation: .sourceOver, fraction: CGFloat(opacity))
+            NSGraphicsContext.restoreGraphicsState()
+        }
         let image = NSImage(size: bounds.size)
         image.addRepresentation(rep)
         let picture = PassiveImageView(image: image)

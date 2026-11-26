@@ -55,6 +55,17 @@ struct SwipeAccumulatorTests {
         #expect(feed(-60, .changed) == nil)
     }
 
+    @Test mutating func aBeganEventWithoutMovementLeavesTheDecisionToTheNextOne() {
+        #expect(feed(0, .began) == nil)
+        #expect(feed(-30, .changed) == nil)
+        #expect(feed(-30, .changed) == .next)
+    }
+
+    @Test mutating func aGestureThatStartsVerticalStaysAScrollEvenIfItTurnsSideways() {
+        #expect(feed(0, dy: -20, .began) == nil)
+        #expect(feed(-80, .changed) == nil)
+    }
+
     @Test mutating func eventsWithoutAPhaseAreIgnored() {
         // A mouse wheel has no gesture.
         #expect(feed(-80, []) == nil)

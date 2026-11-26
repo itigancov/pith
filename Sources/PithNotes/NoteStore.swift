@@ -203,7 +203,7 @@ public final class NoteStore {
     public func deleteEmptyNotes() throws -> [UUID] {
         let candidates = try database.query("SELECT id, text FROM notes WHERE deleted_at IS NULL") { ($0.text(0), $0.text(1)) }
         let empty = candidates.compactMap { id, text in
-            text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UUID(uuidString: id) : nil
+            Note.isEmpty(text: text) ? UUID(uuidString: id) : nil
         }
         for id in empty { try deletePermanently(id: id) }
         return empty
