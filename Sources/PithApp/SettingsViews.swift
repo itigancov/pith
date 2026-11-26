@@ -21,16 +21,7 @@ struct GeneralSettingsView: View {
         Form {
             Section {
                 ShortcutRow(store: context.shortcuts, action: .hotkey, title: "Open Pith")
-                LabeledContent {
-                    // Until the login item exists (13) the switch is off and cannot be turned on.
-                    Toggle("Open at login", isOn: .constant(false))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .disabled(true)
-                } label: {
-                    RowLabel(title: "Open at login", caption: "Keeps the shortcut working after a restart")
-                }
+                OpenAtLoginRow(item: context.loginItem)
             }
             Section {
                 LabeledContent {

@@ -33,14 +33,17 @@ final class SettingsContext {
     let appearance: AppearanceModel
     let latestMeans: LatestMeansModel
     let trash: SettingsTrash
+    let loginItem: LoginItem
     /// Empty Trash… was pressed: asks and empties.
     var emptyTrash: () -> Void = {}
 
-    init(shortcuts: ShortcutStore, textSize: TextSizeModel, appearance: AppearanceModel, latestMeans: LatestMeansModel, trash: SettingsTrash) {
+    init(shortcuts: ShortcutStore, textSize: TextSizeModel, appearance: AppearanceModel, latestMeans: LatestMeansModel, trash: SettingsTrash,
+         loginItem: LoginItem) {
         self.shortcuts = shortcuts
         self.textSize = textSize
         self.appearance = appearance
         self.latestMeans = latestMeans
         self.trash = trash
+        self.loginItem = loginItem
     }
 }
