@@ -67,6 +67,8 @@ struct ShortcutRow: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
+        // A rejection is about a recording that is over: any change of the Shortcuts (Restore Defaults too) clears it.
+        .onReceive(NotificationCenter.default.publisher(for: .shortcutsDidChange, object: store)) { _ in rejection = nil }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }

@@ -6,8 +6,19 @@ enum SettingsTab: String, CaseIterable {
 
     static let defaultsKey = "SettingsTab"
 
-    var title: String { self == .general ? "General" : "Shortcuts" }
-    var symbol: String { self == .general ? "gearshape" : "keyboard" }
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .shortcuts: "Shortcuts"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .shortcuts: "keyboard"
+        }
+    }
 
     /// The tab stored by the last session; a missing or broken value is General.
     static func stored(in defaults: UserDefaults) -> SettingsTab {

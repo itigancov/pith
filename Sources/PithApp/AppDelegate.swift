@@ -75,8 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts.registerHotkey()
 
         // Every launch shows the Panel, as the Hotkey does; the recorder window takes its place for `-PithShow recorder`.
-        if Surface.requested == .settings || Surface.requested == .settingsShortcuts {
-            settings.show(tab: Surface.requested == .settings ? .general : .shortcuts, remembering: false)
+        if let tab = Surface.requested.settingsTab {
+            settings.show(tab: tab, remembering: false)
         } else if Surface.requested == .recorder {
             let state = UserDefaults.standard.string(forKey: "PithRecorderState").flatMap(Self.recorderState)
             recorderWindow = RecorderTestWindow(store: shortcuts, size: windowSizeArgument(), state: state)
@@ -238,6 +238,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case settings
         case settingsShortcuts = "settings-shortcuts"
 
+        /// The tab of the Settings window when that is the surface.
+        var settingsTab: SettingsTab? {
+            switch self {
+            case .settings: .general
+            case .settingsShortcuts: .shortcuts
+            default: nil
+            }
+        }
+
         var opensPopup: Bool { self == .contextMenu || self == .contextMenuSpelling || self == .menuBar }
         /// A sheet slides in, and Search or the Trash comes up after the window does; the window is captured only after they have.
         var opensSheet: Bool {
@@ -264,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The Settings window when it is the surface; it is on screen already.
     private func settingsShotWindow() -> NSWindow? {
-        guard Surface.requested == .settings || Surface.requested == .settingsShortcuts else { return nil }
+        guard Surface.requested.settingsTab != nil else { return nil }
         return NSApp.windows.first { $0.windowNumber == settings?.windowNumber }
     }
 

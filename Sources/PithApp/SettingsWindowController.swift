@@ -121,7 +121,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             alert.addButton(withTitle: "OK")
             alert.beginSheetModal(for: window)
         }
-        context.trash.refresh()
         onTrashEmptied()
     }
 

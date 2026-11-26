@@ -139,7 +139,7 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
             guard let self, self.transition == current else { return }
             self.panel.orderOut(nil)
             self.panel.alphaValue = 1
-            if NSApp.isActive, self.keepsAppVisible() == false { NSApp.hide(nil) }
+            if NSApp.isActive, !self.keepsAppVisible() { NSApp.hide(nil) }
         }
     }
 
