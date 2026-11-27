@@ -1,10 +1,12 @@
 # Pith
 
 [![test](https://github.com/itigancov/pith/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/itigancov/pith/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/release/itigancov/pith)](https://github.com/itigancov/pith/releases/latest)
+[![license](https://img.shields.io/github/license/itigancov/pith)](LICENSE)
 
 A live-Markdown note editor for macOS, built on NSTextView and TextKit 2.
 
-**Status:** 0.1.0, see the [changelog](CHANGELOG.md).
+**Status:** early, a prototype. What changed in each release is in the [changelog](CHANGELOG.md).
 
 <p align="center">
   <picture>
