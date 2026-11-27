@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Changed
 
 - The Panel stays over the other apps, also across Spaces and full-screen apps, until you hide it with the Hotkey or Esc; losing focus no longer hides it. The Hotkey on a shown Panel without focus focuses it instead of hiding it.
+- The Note, Search and the Trash use the system overlay scroller whatever the system setting or input device: it appears on scrolling, fades out, takes no width and follows the theme.
 
 ## [0.1.0] - 2026-11-27
 
@@ -29,5 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App icon and menu bar icon.
 - Install with `brew install --cask itigancov/tap/pith`, or from the zip of a GitHub Release (universal, ad-hoc signed, not notarized).
 
-[Unreleased]: https://github.com/itigancov/pith/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/itigancov/pith/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/itigancov/pith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/itigancov/pith/releases/tag/v0.1.0
