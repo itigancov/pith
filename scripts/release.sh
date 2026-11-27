@@ -52,7 +52,9 @@ if [[ $check_only -eq 0 ]]; then
     git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 || remote_tag=$?
     [[ $remote_tag -ne 0 ]] || die "tag $tag exists in origin"
     [[ $remote_tag -eq 2 ]] || die "cannot ask origin about tag $tag (git ls-remote failed with $remote_tag)"
-    gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
+    # Not `gh auth status`: it exits 1 when any stored account has a bad token, even if the active one works.
+    gh_user="$(gh api user --jq .login 2>/dev/null)" || die "the active gh account cannot reach GitHub (gh auth login)"
+    echo "    gh: $gh_user"
 fi
 
 # --- 2. Build -----------------------------------------------------------------------------------------------------
