@@ -69,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.trashController = trash
         panel.onWillHide = { [weak screen] in screen?.flush() }
+        panel.onResignKey = { [weak screen] in screen?.flush() }
         let menus = AppMenus(shortcuts: shortcuts, panel: panel, note: screen, search: search, trash: trash, textSize: textSize)
         self.menus = menus
         panel.panel.onKeyEquivalent = { [weak menus] event in menus?.performKeyEquivalent(event) ?? false }
@@ -108,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // While the onboarding is open the Hotkey brings it forward; the Panel stays out of its way.
         hotkeys.onPress = { [weak panel, weak onboarding] in
-            if let onboarding, onboarding.isVisible { onboarding.bringForward() } else { panel?.toggle() }
+            if let onboarding, onboarding.isVisible { onboarding.bringForward() } else { panel?.pressHotkey() }
         }
         // A Hotkey the system refuses is logged; the menu's Open Pith is the way in then.
         shortcuts.registerHotkey()

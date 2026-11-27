@@ -1,13 +1,15 @@
 import AppKit
 import PithEditor
 
-/// When the Panel hides on losing key.
-enum PanelVisibility {
-    /// Whether the Panel hides now that key went to `newKey` (`nil` for another app): it stays only while key is
-    /// on the Panel itself or on its own sheet.
-    static func shouldHide<Window: AnyObject>(panel: Window, attachedSheet: Window?, newKey: Window?) -> Bool {
-        guard let newKey else { return true }
-        return newKey !== panel && newKey !== attachedSheet
+/// What the Hotkey does to the Panel.
+enum HotkeyAction: Equatable {
+    case show, hide, reveal
+
+    /// Hidden: show. Shown and key: hide. Shown without key (the user went to another app): bring it forward and
+    /// focus it, never hide; the Panel stays until the user hides it.
+    static func decide(isShown: Bool, isKey: Bool) -> HotkeyAction {
+        guard isShown else { return .show }
+        return isKey ? .hide : .reveal
     }
 }
 
@@ -19,6 +21,8 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
     let screens: ScreenStack
     /// Called before the Panel starts hiding, for saving the Note at once.
     var onWillHide: () -> Void = {}
+    /// Called when the Panel loses key (not its sheet), for saving the Note at once: the Panel may stay shown.
+    var onResignKey: () -> Void = {}
 
     /// `panel.fade`.
     private static let fadeDuration: TimeInterval = 0.15
@@ -47,9 +51,6 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
         panel.delegate = self
         panel.onCancel = { [weak self] in self?.cancel() }
         screens.onChange = { [weak self] _, new in self?.screenDidChange(to: new) }
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(windowDidResignKeyAnywhere), name: NSWindow.didResignKeyNotification, object: nil
-        )
     }
 
     /// The screen on top now.
@@ -97,8 +98,15 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
         presentNextAlert()
     }
 
-    func toggle() {
-        if isShown { hide() } else { show() }
+    /// The Hotkey: shows a hidden Panel, hides a focused one, focuses a shown one that lost focus. The sheet of an
+    /// alert counts as the Panel's own focus.
+    func pressHotkey() {
+        let isKey = panel.isKeyWindow || panel.attachedSheet?.isKeyWindow == true
+        switch HotkeyAction.decide(isShown: isShown, isKey: isKey) {
+        case .show: show()
+        case .hide: hide()
+        case .reveal: reveal()
+        }
     }
 
     /// Shows the Panel on the screen under the mouse, takes key without activating Pith, and shows a waiting alert.
@@ -210,15 +218,9 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
 
     // MARK: Losing key
 
-    /// The Panel or its sheet lost key. The new key window is known only once the switch is over.
-    @objc private func windowDidResignKeyAnywhere(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === panel || window === panel.attachedSheet else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.isShown else { return }
-            if PanelVisibility.shouldHide(panel: self.panel, attachedSheet: self.panel.attachedSheet, newKey: NSApp.keyWindow) {
-                self.hide()
-            }
-        }
+    /// Only the Panel itself: its sheet is not this window.
+    func windowDidResignKey(_ notification: Notification) {
+        onResignKey()
     }
 
     // MARK: Storage alerts
@@ -232,7 +234,6 @@ final class PanelController: NSObject, NSWindowDelegate, StorageAlerts, PanelHos
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Show in Finder")
         enqueue(alert) { response in
-            // Finder takes key, so the Panel hides by itself.
             if response == .alertSecondButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([movedFile]) }
         }
     }
