@@ -47,7 +47,11 @@ if [[ $check_only -eq 0 ]]; then
     git fetch --quiet origin main
     [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "HEAD differs from origin/main"
     if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then die "tag $tag exists locally"; fi
-    if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then die "tag $tag exists in origin"; fi
+    # `--exit-code`: 0 the tag exists, 2 it does not; anything else is a failure to ask.
+    remote_tag=0
+    git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 || remote_tag=$?
+    [[ $remote_tag -ne 0 ]] || die "tag $tag exists in origin"
+    [[ $remote_tag -eq 2 ]] || die "cannot ask origin about tag $tag (git ls-remote failed with $remote_tag)"
     gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
 fi
 
@@ -71,6 +75,8 @@ read_plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist"; }
 archs="$(lipo -archs "$app/Contents/MacOS/Pith")"
 [[ " $archs " == *" x86_64 "* && " $archs " == *" arm64 "* ]] || die "the binary is not universal: $archs"
 codesign --verify --deep --strict "$app" || die "the signature is not valid"
+signature="$(codesign -dv "$app" 2>&1)"
+[[ "$signature" == *$'\nSignature=adhoc'* ]] || die "the signature is not ad-hoc"
 [[ "$(read_plist CFBundleShortVersionString)" == "$version" ]] || die "CFBundleShortVersionString is $(read_plist CFBundleShortVersionString), expected $version"
 [[ "$(read_plist CFBundleVersion)" == "$build" ]] || die "CFBundleVersion is $(read_plist CFBundleVersion), expected $build"
 [[ "$(read_plist CFBundleIdentifier)" == "$bundle_id" ]] || die "bundle ID is $(read_plist CFBundleIdentifier), expected $bundle_id"
@@ -112,7 +118,7 @@ else
 fi
 sed -E -e "s/^( *version )\".*\"/\1\"$version\"/" -e "s/^( *sha256 )\".*\"/\1\"$sha\"/" "$work/cask-old.rb" >"$work/cask-new.rb"
 
-# --- 6. Dry run ---------------------------------------------------------------------------------------------------
+# --- 5. Dry run: print what would be published and stop ----------------------------------------------------------
 if [[ -n "$dry_run" ]]; then
     step "DRY_RUN: nothing is published"
     echo "zip:    $zip"
@@ -125,13 +131,14 @@ if [[ -n "$dry_run" ]]; then
     exit 0
 fi
 
-# --- 7-9. Publish: the tag, the GitHub Release, the tap -----------------------------------------------------------
+# --- 6-8. Publish: the tag, the GitHub Release, the tap -----------------------------------------------------------
 step "Tagging $tag"
 git tag -a "$tag" -m "Pith $version"
 git push origin "$tag"
 
 step "Creating the GitHub Release"
-gh release create "$tag" "$zip" --repo "$repo" --title "Pith $version" --notes-file "$notes" --verify-tag
+gh release create "$tag" "$zip" --repo "$repo" --title "Pith $version" --notes-file "$notes" --verify-tag \
+    || die "the tag $tag is pushed, but the Release failed; create it by hand (gh release create $tag $zip) and update the cask (sha256 $sha)"
 
 step "Updating the cask in $tap"
 mkdir -p "$tapdir/Casks"
