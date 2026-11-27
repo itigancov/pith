@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Colors of the onboarding, from the artboards Onboarding-Hotkey and Onboarding-Ready. The dark values are proposed: where
 /// there is one, a system color.
-private enum OnboardingColors {
+enum OnboardingColors {
     private static func dynamic(name: String, light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: name) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
     }
@@ -13,6 +13,11 @@ private enum OnboardingColors {
     }
 
     static let ink = Color(nsColor: RecorderTheme.ink)
+    /// The label of the primary button, on Ink: white on #3B5BDB in light (5.7:1), near-black on #8DA2F5 in the dark (7.4:1; white gave 2.4:1).
+    static let primaryLabelInk = NSColor(name: "onboarding.button.primary.label") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(0x1D1D1F) : .white
+    }
+    static let primaryLabel = Color(nsColor: primaryLabelInk)
     static let background = dynamic(name: "onboarding.background", light: .white, dark: .windowBackgroundColor)
     static let title = dynamic(name: "onboarding.title", light: rgb(0x1D1D1F), dark: .labelColor)
     static let body = dynamic(name: "onboarding.body", light: rgb(0x55555A), dark: .secondaryLabelColor)
@@ -68,7 +73,6 @@ private struct HotkeyStep: View {
                     .foregroundStyle(OnboardingColors.title)
                 OnboardingRecorder(store: model.shortcuts, onRejection: { rejection = $0 }, onDefaultAction: { model.continue() })
                     .frame(height: 44)
-                    .accessibilityLabel("Shortcut to open Pith")
                 Text(rejection ?? "Press another combination to change it. You can do this later in Settings.")
                     .font(.system(size: 12))
                     .foregroundStyle(rejection == nil ? OnboardingColors.caption : SettingsColors.error)
@@ -355,7 +359,7 @@ private struct OnboardingButtonStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: 8)
         configuration.label
             .font(.system(size: 13, weight: kind == .primary ? .semibold : .medium))
-            .foregroundStyle(kind == .primary ? Color.white : OnboardingColors.title)
+            .foregroundStyle(kind == .primary ? OnboardingColors.primaryLabel : OnboardingColors.title)
             .padding(.horizontal, kind == .primary ? 18 : 14)
             .frame(height: 32)
             .background(shape.fill(kind == .primary ? OnboardingColors.ink : OnboardingColors.secondaryButton))

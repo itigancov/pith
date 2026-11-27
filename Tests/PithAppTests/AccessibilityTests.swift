@@ -122,6 +122,14 @@ struct AccessibilityTests {
         return names
     }
 
+    @Test func theRecorderSaysItsShortcutAndThenThatItIsRecording() {
+        let recorder = ShortcutRecorderView(variant: .compact, shortcut: ShortcutAction.hotkey.defaultShortcut, layout: StubLayout())
+        #expect(recorder.accessibilityRole() == .button)
+        #expect(recorder.accessibilityLabel() == "Change shortcut, now Option Space")
+        #expect(recorder.accessibilityPerformPress())
+        #expect(recorder.accessibilityLabel() == "Recording shortcut. Press the new combination, or Escape to cancel")
+    }
+
     @Test func theSettingsWindowIsNamedAfterTheTabItShows() throws {
         let defaults = UserDefaults(suiteName: "pith-tests-" + UUID().uuidString)!
         let shortcuts = ShortcutStore(defaults: defaults, menuKeys: { [] }, systemShortcuts: { [] }, layout: StubLayout(), registrar: FakeRegistrar())
@@ -147,6 +155,13 @@ struct AccessibilityTests {
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let fill = resolved(TrashStyle.restoreFill, as: name)
             #expect(contrast(.white, fill) >= 4.5, "Restore, \(name.rawValue)")
+        }
+    }
+
+    @Test func theLabelOfTheOnboardingButtonReadsOnInkInBothThemes() {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = resolved(OnboardingColors.primaryLabelInk, as: name)
+            #expect(contrast(label, resolved(RecorderTheme.ink, as: name)) >= 4.5, "Continue, \(name.rawValue)")
         }
     }
 
