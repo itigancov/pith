@@ -40,7 +40,7 @@ SHOTS_FIXTURES_welcome := Empty.md
 SHOTS_DEFAULT_FIXTURE := $(or $(SHOTS_FIXTURES_$(SURFACE)),Panel.md)
 SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/$(SHOTS_DEFAULT_FIXTURE),$(FIXTURE))
 
-.PHONY: test bench build run shots release
+.PHONY: test bench build run shots readme-media release
 
 test:
 	swift test
@@ -61,6 +61,10 @@ run: build
 # Light and dark PNGs of the real window, see scripts/shots.sh.
 shots: build
 	SURFACE="$(SURFACE)" FIXTURE="$(SHOTS_FIXTURE)" OUT="$(OUT)" scripts/shots.sh "$(APP)"
+
+# The README's pictures in docs/images: framed Panel PNGs and a GIF, light and dark (scripts/readme-media.sh).
+readme-media: build
+	scripts/readme-media.sh "$(APP)"
 
 # `make release VERSION=0.1.0` on a clean main: universal Release, tag, GitHub Release, cask in the tap (scripts/release.sh).
 # `DRY_RUN=1` stops before anything is published; `scripts/release.sh --check` is the build and the checks alone.
