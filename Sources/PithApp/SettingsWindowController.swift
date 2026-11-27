@@ -64,7 +64,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.makeFirstResponder(nil)
     }
 
-    private func makeWindow() -> NSWindow {
+    func makeWindow() -> NSWindow {
         let controller = SettingsTabViewController()
         controller.tabStyle = .toolbar
         for tab in SettingsTab.allCases {
@@ -74,6 +74,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             case .shortcuts: host = NSHostingController(rootView: AnyView(ShortcutsSettingsView(context: context)))
             }
             host.sizingOptions = .preferredContentSize
+            // The tab view controller takes the window's title from the tab it shows; without this it is "Untitled", which
+            // VoiceOver reads out as the name of the window.
+            host.title = tab.title
             let item = NSTabViewItem(viewController: host)
             item.identifier = tab.rawValue
             item.label = tab.title

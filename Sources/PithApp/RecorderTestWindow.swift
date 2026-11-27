@@ -84,11 +84,7 @@ final class RecorderTestWindow {
     private func captioned(_ content: NSView, width: CGFloat, recorder: ShortcutRecorderView, action: ShortcutAction) -> NSView {
         let caption = NSTextField(labelWithString: "")
         caption.font = .systemFont(ofSize: 12)
-        caption.textColor = NSColor(name: "caption.error") { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                ? NSColor(srgbRed: 1, green: 0x45 / 255, blue: 0x3A / 255, alpha: 1)
-                : NSColor(srgbRed: 0xD7 / 255, green: 0, blue: 0x15 / 255, alpha: 1)
-        }
+        caption.textColor = SettingsColors.errorInk
         caption.isHidden = true
         recorder.onCommit = { [store] in store.assign($0, to: action) }
         recorder.onRecordingChange = { [store] in store.setRecording($0) }

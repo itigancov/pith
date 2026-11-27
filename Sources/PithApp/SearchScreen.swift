@@ -215,13 +215,7 @@ final class SearchScreen: NSObject, PanelScreen, NSTextFieldDelegate, NSTableVie
             emptyDetail.stringValue = message.detail
         }
         if !parsed.isEmpty, !searchFailed {
-            NSAccessibility.post(
-                element: header.field, notification: .announcementRequested,
-                userInfo: [
-                    .announcement: results.isEmpty ? "No notes match \(query)" : Self.count(results.count),
-                    .priority: NSAccessibilityPriorityLevel.medium.rawValue,
-                ]
-            )
+            Announcer.announce(message?.title ?? Self.count(results.count), priority: .medium, on: header.field)
         }
     }
 
@@ -302,10 +296,7 @@ final class SearchScreen: NSObject, PanelScreen, NSTextFieldDelegate, NSTableVie
         updatePill()
         let count = selection.selected.count
         if count != spokenCount, count >= 2 {
-            NSAccessibility.post(
-                element: table, notification: .announcementRequested,
-                userInfo: [.announcement: "\(count) selected", .priority: NSAccessibilityPriorityLevel.low.rawValue]
-            )
+            Announcer.announce("\(count) selected", priority: .medium, on: table)
         }
         spokenCount = count
     }

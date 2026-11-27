@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+@testable import PithApp
 import PithNotes
 
 /// Time that moves only when the test says so.
@@ -48,4 +50,16 @@ import PithNotes
     func advance(_ seconds: TimeInterval) {
         date = date.addingTimeInterval(seconds)
     }
+}
+
+/// What VoiceOver is told while `body` runs.
+@MainActor
+func announcements(during body: () throws -> Void) rethrows -> [Announcer.Announcement] {
+    final class Box { var heard: [Announcer.Announcement] = [] }
+    let box = Box()
+    let previous = Announcer.post
+    Announcer.post = { text, priority, _ in box.heard.append(Announcer.Announcement(text: text, priority: priority)) }
+    defer { Announcer.post = previous }
+    try body()
+    return box.heard
 }
