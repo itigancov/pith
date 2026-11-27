@@ -18,7 +18,7 @@ Prototype of a live-Markdown editor for macOS (NSTextView + TextKit 2). Vocabula
 - `Sources/PithApp`, `Tests/PithAppTests` — AppKit shell (`PithApp.run()`): Panel and its Screens, Hotkey, menus, Settings (SwiftUI tabs in an `NSTabViewController`), launch flags; `LoginItem` (Open at login over `SMAppService`, the wish in `UserDefaults`), `InstallLocation` (in Applications or not), `ApplicationMover` and `MoveOffer` (the move to Applications at a launch from elsewhere, Release only), `LaunchEvent` (a login launch is quiet), `OnboardingModel` (whether the first-launch onboarding shows, its two steps, finishing, and the welcome Note put into an empty Stack; `OnboardingWindowController` and `OnboardingViews` are the window over it, `WelcomeNote` the text); default isolation MainActor
 - `App` — Xcode target `Pith`, `main.swift` and `AppIcon.icon` (Icon Composer); `project.yml` generates `.xcodeproj` (not committed)
 - `Fixtures` — sample texts for `make run` (`Demo.md`) and `make shots` (`Panel.md`, the text of the Main artboard; `TextSize.md`; `Stack.md`, `Standup.md`; `ContextMenuSpelling.md`, `Panel.md` with “tetsers”; `Empty.md` for the placeholder; `Search.json`, several Notes with `updatedAt` for the Search artboards, which `-PithFixture` also takes; `Trash.json`, the same with `deletedAt` for Notes in the Trash; `DeleteUndo.json`, two Notes with `Panel.md` last), not bundled
-- `scripts` — `shots.sh` behind `make shots`, `release.sh` and `pith.rb.template` (the cask) behind `make release`
+- `scripts` — `shots.sh` behind `make shots`, `readme-media.sh` and `frame.swift` behind `make readme-media` (the PNGs and GIFs of the README in `docs/images`; needs ffmpeg), `release.sh` and `pith.rb.template` (the cask) behind `make release`
 
 ## Rules
 

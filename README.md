@@ -6,14 +6,10 @@ A live-Markdown note editor for macOS, built on NSTextView and TextKit 2.
 
 **Status:** 0.1.0, see the [changelog](CHANGELOG.md).
 
-<p>
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/panel-dark.png">
-    <img alt="The Pith panel with a Markdown note" src="docs/images/panel-light.png" width="400">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/search-dark.png">
-    <img alt="Search across notes" src="docs/images/search-light.png" width="400">
+    <img alt="The Pith panel with a Markdown note" src="docs/images/panel-light.png" width="560">
   </picture>
 </p>
 
@@ -25,6 +21,13 @@ A live-Markdown note editor for macOS, built on NSTextView and TextKit 2.
 - **Search** — ⌘F across all notes, with highlighted snippets.
 - **Trash** — ⌘⌫ moves a note there, with an undo toast.
 - **Open at login** — so the Hotkey works right after you sign in.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/demo-dark.gif">
+    <img alt="The panel, then Search across notes" src="docs/images/demo-light.gif" width="560">
+  </picture>
+</p>
 
 ## Requirements
 
