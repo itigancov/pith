@@ -11,7 +11,7 @@ final class TrashScreen: NSObject, PanelScreen, NSTableViewDataSource, NSTableVi
 
     let view: NSView
     private let header = TrashHeaderView()
-    private let scrollView = NSScrollView()
+    private let scrollView = PanelScrollView()
     let table = TrashTableView()
     private let emptyContainer = NSView()
     private let emptyTitle = NSTextField(labelWithString: "")
@@ -78,8 +78,6 @@ final class TrashScreen: NSObject, PanelScreen, NSTableViewDataSource, NSTableVi
 
         scrollView.documentView = table
         scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
 

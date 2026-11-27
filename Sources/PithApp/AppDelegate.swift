@@ -306,6 +306,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case onboardingReadyOutside = "onboarding-ready-outside"
         /// The Panel on the welcome Note, put into an empty database as finishing the onboarding does.
         case welcome
+        /// A Note longer than the Panel with the scroller shown.
+        case scroller
 
         /// The step of the onboarding window when that is the surface.
         var onboardingStep: OnboardingModel.Step? {
@@ -330,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var opensSheet: Bool {
             switch self {
             case .saveFailure, .searchAll, .searchResults, .searchEmpty, .searchSelect, .deleteUndo, .trash, .trashConfirm, .trashDelete, .settings, .settingsShortcuts,
-                 .settingsLoginApproval, .settingsOutsideApplications, .moveAlert, .onboardingHotkey, .onboardingReady, .onboardingReadyOutside, .welcome: true
+                 .settingsLoginApproval, .settingsOutsideApplications, .moveAlert, .onboardingHotkey, .onboardingReady, .onboardingReadyOutside, .welcome, .scroller: true
             default: false
             }
         }
@@ -448,6 +450,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .trashDelete: self?.showTrash()?.deleteSelectedPermanently()
             case .stack, .stackNew, .jumpLatest:
                 screen.activateFooter(pinned: true)
+            case .scroller:
+                // The scroller fades out in about a second; flashing it until the shot keeps it in view when the window is captured.
+                let timer = Timer(timeInterval: 0.2, repeats: true) { [weak screen] timer in
+                    guard let screen else { return timer.invalidate() }
+                    screen.scrollView.flashScrollers()
+                }
+                RunLoop.main.add(timer, forMode: .common)
             }
         }
     }
