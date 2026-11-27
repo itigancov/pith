@@ -9,7 +9,7 @@ A single note: plain Markdown text that the user sees and edits as is.
 _Avoid_: Document, file, page
 
 **Panel**:
-The window Pith shows over all apps when the user presses the Hotkey. It shows one Screen at a time, the Note by default, and hides when the user leaves it.
+The window Pith shows over all apps when the user presses the Hotkey. It shows one Screen at a time, the Note by default. It stays over the other apps until the user hides it with the Hotkey or Esc; losing focus does not hide it.
 _Avoid_: Window, popup, HUD
 
 **Screen**:
@@ -21,7 +21,7 @@ A key combination bound to a command. Seven can be reassigned: the Hotkey and si
 _Avoid_: Keybinding, key equivalent, accelerator
 
 **Hotkey**:
-The one shortcut that works from any app: it shows and hides the Panel. Every other shortcut works only inside the Panel. The user can change it but never leave it empty.
+The one shortcut that works from any app: it shows the Panel, hides a focused one, and focuses a shown one that lost focus. Every other shortcut works only inside the Panel. The user can change it but never leave it empty.
 _Avoid_: Global shortcut, trigger, activation key
 
 **Stack**:

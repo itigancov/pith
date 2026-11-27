@@ -349,7 +349,7 @@ final class AppMenus: NSObject, NSMenuItemValidation, NSMenuDelegate {
 
     @objc func resetPanelSize(_ sender: Any?) { panel.resetPanelFrame(sender) }
 
-    /// ⌘W: the Panel hides, as it does when focus leaves it; any other window of Pith closes.
+    /// ⌘W: the Panel hides; any other window of Pith closes.
     @objc func closeWindow(_ sender: Any?) {
         if panel.isKey {
             panel.hide()

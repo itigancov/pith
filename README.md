@@ -15,7 +15,7 @@ A live-Markdown note editor for macOS, built on NSTextView and TextKit 2.
 
 ## Features
 
-- **Hotkey** — ⌥Space opens and hides the panel from any app, without taking focus away from it.
+- **Hotkey** — ⌥Space opens and hides the panel from any app, without taking focus away from it. The panel stays over other apps until you hide it.
 - **Live Markdown** — the text stays plain Markdown, styled as you type.
 - **Stack** — notes in one stack: ⌘N for a new one, swipe or ⇧⌘[ / ⇧⌘] to page, ⌘1 for the latest.
 - **Search** — ⌘F across all notes, with highlighted snippets.

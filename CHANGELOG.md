@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Panel stays over the other apps, also across Spaces and full-screen apps, until you hide it with the Hotkey or Esc; losing focus no longer hides it. The Hotkey on a shown Panel without focus focuses it instead of hiding it.
+
 ## [0.1.0] - 2026-11-27
 
 ### Added
