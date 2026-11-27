@@ -22,7 +22,7 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate, ToastHost {
     static let bottomInset: CGFloat = 40
 
     let editor = EditorTextView()
-    let scrollView = NSScrollView()
+    let scrollView = PanelScrollView()
     let hud: SizeHUDView
     let footer: StackFooterView
     let toast = ToastView()
@@ -116,8 +116,6 @@ final class NoteScreen: NSObject, PanelScreen, NSTextViewDelegate, ToastHost {
     private func layOut(in container: NSView) {
         scrollView.frame = container.bounds
         scrollView.autoresizingMask = [.width, .height]
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = false
         // The title bar is invisible, so the text starts at the editor's own inset, not below it.
         scrollView.automaticallyAdjustsContentInsets = false

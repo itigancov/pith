@@ -15,7 +15,7 @@ final class SearchScreen: NSObject, PanelScreen, NSTextFieldDelegate, NSTableVie
 
     let view: NSView
     private let header = SearchFieldView()
-    private let scrollView = NSScrollView()
+    private let scrollView = PanelScrollView()
     let table = SearchTableView()
     private let pill = SelectionPillView()
     let toastView = ToastView()
@@ -106,8 +106,6 @@ final class SearchScreen: NSObject, PanelScreen, NSTextFieldDelegate, NSTableVie
 
         scrollView.documentView = table
         scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets()
 

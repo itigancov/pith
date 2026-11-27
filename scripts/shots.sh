@@ -2,7 +2,7 @@
 # Screenshots of Pith's real windows in both themes: `make shots`.
 # Usage: scripts/shots.sh <Pith.app>
 # Environment: SURFACE (window|context-menu|context-menu-spelling|menu-bar|text-size|save-failure|recorder|stack|stack-new|jump-latest|search-all|
-# search-results|search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert|onboarding-hotkey|onboarding-ready|onboarding-ready-outside|welcome), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
+# search-results|search-empty|search-select|delete-undo|trash|trash-confirm|trash-delete|settings|settings-shortcuts|settings-login-approval|settings-outside-applications|move-alert|onboarding-hotkey|onboarding-ready|onboarding-ready-outside|welcome|scroller), FIXTURE (text file, or a .json of Notes for Search), OUT (folder for the PNGs).
 set -euo pipefail
 
 app="${1:?usage: shots.sh <Pith.app>}"
