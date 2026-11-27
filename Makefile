@@ -40,7 +40,7 @@ SHOTS_FIXTURES_welcome := Empty.md
 SHOTS_DEFAULT_FIXTURE := $(or $(SHOTS_FIXTURES_$(SURFACE)),Panel.md)
 SHOTS_FIXTURE ?= $(if $(filter file,$(origin FIXTURE)),$(CURDIR)/Fixtures/$(SHOTS_DEFAULT_FIXTURE),$(FIXTURE))
 
-.PHONY: test bench build run shots
+.PHONY: test bench build run shots release
 
 test:
 	swift test
@@ -61,3 +61,8 @@ run: build
 # Light and dark PNGs of the real window, see scripts/shots.sh.
 shots: build
 	SURFACE="$(SURFACE)" FIXTURE="$(SHOTS_FIXTURE)" OUT="$(OUT)" scripts/shots.sh "$(APP)"
+
+# `make release VERSION=0.1.0` on a clean main: universal Release, tag, GitHub Release, cask in the tap (scripts/release.sh).
+# `DRY_RUN=1` stops before anything is published; `scripts/release.sh --check` is the build and the checks alone.
+release:
+	VERSION="$(VERSION)" DRY_RUN="$(DRY_RUN)" scripts/release.sh
