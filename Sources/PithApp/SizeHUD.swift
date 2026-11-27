@@ -116,10 +116,7 @@ final class SizeHUDView: NSView {
         isHidden = false
         alphaValue = 1
         // Reaches VoiceOver even though the pill is not focused.
-        NSAccessibility.post(
-            element: NSApp as Any, notification: .announcementRequested,
-            userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue]
-        )
+        Announcer.announce(text, priority: .medium)
         hold?.cancel()
         hold = nil
         if autoHide { hold = scheduler.schedule(after: Self.hold) { [weak self] in self?.fadeOut() } }

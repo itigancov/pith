@@ -144,8 +144,6 @@ final class SearchRowCell: NSTableCellView {
             detail.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
             detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
         ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.row)
     }
 
     @available(*, unavailable)

@@ -99,10 +99,7 @@ final class StackFooterView: NSView {
         hold = nil
         if !pinned { hold = scheduler.schedule(after: Self.hold) { [weak self] in self?.holdDidEnd() } }
         // Reaches VoiceOver though the footer is not focused.
-        NSAccessibility.post(
-            element: NSApp as Any, notification: .announcementRequested,
-            userInfo: [.announcement: spoken, .priority: NSAccessibilityPriorityLevel.high.rawValue]
-        )
+        Announcer.announce(spoken, priority: .high)
     }
 
     /// Back to rest at once, for the next time the Panel shows.

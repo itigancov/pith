@@ -18,10 +18,10 @@ enum TrashStyle {
             : NSColor(srgbRed: 0xB4 / 255, green: 0x23 / 255, blue: 0x18 / 255, alpha: 1)
     }
 
-    /// `trash.restore` background: Ink, #3B5BDB, #4C6EF5 in the dark.
+    /// `trash.restore` background: Ink, #3B5BDB; #4263EB in the dark, so that the white label keeps 4.5:1 (Ink’s #4C6EF5 gives 4.3:1).
     static let restoreFill = NSColor(name: "trash.restore") { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(srgbRed: 0x4C / 255, green: 0x6E / 255, blue: 0xF5 / 255, alpha: 1)
+            ? NSColor(srgbRed: 0x42 / 255, green: 0x63 / 255, blue: 0xEB / 255, alpha: 1)
             : NSColor(srgbRed: 0x3B / 255, green: 0x5B / 255, blue: 0xDB / 255, alpha: 1)
     }
 
@@ -206,8 +206,6 @@ final class TrashRowCell: NSTableCellView {
         ])
         delete.onPress = { [weak self] in if let self { self.onDelete(self) } }
         restore.onPress = { [weak self] in if let self { self.onRestore(self) } }
-        setAccessibilityElement(true)
-        setAccessibilityRole(.row)
     }
 
     @available(*, unavailable)

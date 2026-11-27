@@ -44,10 +44,7 @@ final class TrashToast {
         host.toastDidChange()
         scheduleTimer()
         if held { hoverChanged(true) }
-        NSAccessibility.post(
-            element: NSApp as Any, notification: .announcementRequested,
-            userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue]
-        )
+        Announcer.announce(text, priority: .high)
     }
 
     /// The mouse is on the toast or left it; the term of the toast stands while it is on.

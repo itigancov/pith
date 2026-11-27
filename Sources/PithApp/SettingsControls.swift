@@ -91,11 +91,14 @@ struct RowLabel: View {
 
 enum SettingsColors {
     /// The red of a rejection's caption.
-    static let error = Color(nsColor: NSColor(name: "caption.error") { appearance in
+    static let error = Color(nsColor: errorInk)
+
+    /// `caption.error`: #D70015, #FF6B5E in the dark (5:1 on the dark Settings; #FF453A gave 4.1:1).
+    static let errorInk = NSColor(name: "caption.error") { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(srgbRed: 1, green: 0x45 / 255, blue: 0x3A / 255, alpha: 1)
+            ? NSColor(srgbRed: 1, green: 0x6B / 255, blue: 0x5E / 255, alpha: 1)
             : NSColor(srgbRed: 0xD7 / 255, green: 0, blue: 0x15 / 255, alpha: 1)
-    })
+    }
 }
 
 /// "− 14 pt +": the Text size, the model's own.
