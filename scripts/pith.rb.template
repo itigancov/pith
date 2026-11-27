@@ -1,0 +1,31 @@
+# Casks/pith.rb of itigancov/homebrew-tap. scripts/release.sh creates the cask from this template when the tap
+# has none, and later only rewrites `version` and `sha256`.
+cask "pith" do
+  version "0.0.0"
+  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+
+  url "https://github.com/itigancov/pith/releases/download/v#{version}/Pith-#{version}.zip"
+  name "Pith"
+  desc "Live-Markdown note editor"
+  homepage "https://github.com/itigancov/pith"
+
+  depends_on macos: :sonoma
+
+  app "Pith.app"
+
+  # Pith is ad-hoc signed and not notarized: without this Gatekeeper blocks the first launch.
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:           ["-dr", "com.apple.quarantine", "{{appdir}}/Pith.app"],
+        writable_paths: ["{{appdir}}/Pith.app"],
+        must_succeed:   false
+  end
+
+  uninstall quit: "io.github.itigancov.pith"
+
+  zap trash: [
+    "~/Library/Application Support/io.github.itigancov.pith",
+    "~/Library/Preferences/io.github.itigancov.pith.plist",
+    "~/Library/Saved Application State/io.github.itigancov.pith.savedState",
+  ]
+end
